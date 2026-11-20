@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtGui import QCloseEvent, QFont
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -81,12 +82,13 @@ def configure_logging() -> None:
 def load_settings() -> dict[str, Any]:
     defaults: dict[str, Any] = {
         "godot_exe": "",
-        "rotation_speed": 24,
+        "rotation_speed": 8,
         "birthday_text": "Happy Birthday",
         "window_width": 820,
         "window_height": 720,
         "music_file": "",
         "music_volume": 0.55,
+        "export_duration_seconds": 8,
     }
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     source_file = CONFIG_FILE if CONFIG_FILE.exists() else DEFAULT_CONFIG_FILE
@@ -124,6 +126,7 @@ class ExportWorker(QThread):
         music_volume: float,
         birthday_text: str,
         rotation_speed: int,
+        duration_seconds: int,
     ) -> None:
         super().__init__()
         self.godot_exe = godot_exe
@@ -134,6 +137,9 @@ class ExportWorker(QThread):
         self.music_volume = music_volume
         self.birthday_text = birthday_text
         self.rotation_speed = rotation_speed
+        self.duration_seconds = max(1, int(duration_seconds))
+        self.fps = 30
+        self.frame_count = self.duration_seconds * self.fps
 
     def run(self) -> None:
         temp_video = self.output_path.with_name(
@@ -151,14 +157,17 @@ class ExportWorker(QThread):
             env["MAGIC_DESKTOP_TEXT"] = self.birthday_text
             env["MAGIC_DESKTOP_SPEED"] = str(self.rotation_speed)
 
-            self.progress.emit("正在渲染 8 秒 3D 动画，请稍候...")
+            self.progress.emit(
+                f"正在渲染 {self.duration_seconds} 秒 3D 动画"
+                f"（{self.frame_count} 帧，1920×1080，30 FPS）..."
+            )
             render_command = [
                 str(self.godot_exe),
                 "--path", str(self.engine_dir),
                 "--write-movie", str(temp_video),
-                "--fixed-fps", "30",
-                "--quit-after", "240",
-                "--resolution", "1280x720",
+                "--fixed-fps", str(self.fps),
+                "--quit-after", str(self.frame_count),
+                "--resolution", "1920x1080",
             ]
             render_result = subprocess.run(
                 render_command,
@@ -185,24 +194,51 @@ class ExportWorker(QThread):
             import imageio_ffmpeg
 
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            duration_text = str(self.duration_seconds)
+            video_filter = (
+                "scale=1920:1080:force_original_aspect_ratio=decrease,"
+                "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x0b1020,"
+                "setsar=1"
+            )
             if self.export_format == "mp4":
                 encode_command = [
                     ffmpeg_exe, "-y",
                     "-i", str(temp_video),
+                ]
+                has_music = bool(self.music_file) and Path(self.music_file).is_file()
+                if has_music:
+                    encode_command.extend([
+                        "-stream_loop", "-1",
+                        "-i", self.music_file,
+                    ])
+                encode_command.extend([
                     "-map", "0:v:0",
-                    "-map", "0:a?",
+                    "-vf", video_filter,
+                    "-r", str(self.fps),
+                    "-t", duration_text,
                     "-c:v", "libx264",
-                    "-preset", "medium",
-                    "-crf", "18",
+                    "-preset", "slow",
+                    "-crf", "16",
+                    "-profile:v", "high",
                     "-pix_fmt", "yuv420p",
-                    "-c:a", "aac",
-                    "-b:a", "192k",
+                ])
+                if has_music:
+                    encode_command.extend([
+                        "-map", "1:a:0",
+                        "-af", f"volume={self.music_volume:.3f}",
+                        "-c:a", "aac",
+                        "-b:a", "192k",
+                        "-shortest",
+                    ])
+                else:
+                    encode_command.extend(["-an"])
+                encode_command.extend([
                     "-movflags", "+faststart",
                     str(self.output_path),
-                ]
+                ])
             else:
                 gif_filter = (
-                    "fps=15,scale=720:-1:flags=lanczos,"
+                    "fps=15,scale=960:540:flags=lanczos,"
                     "split[s0][s1];"
                     "[s0]palettegen=stats_mode=diff[p];"
                     "[s1][p]paletteuse=dither=bayer"
@@ -212,6 +248,7 @@ class ExportWorker(QThread):
                     "-i", str(temp_video),
                     "-map", "0:v:0",
                     "-an",
+                    "-t", duration_text,
                     "-filter_complex", gif_filter,
                     "-loop", "0",
                     str(self.output_path),
@@ -255,8 +292,8 @@ class MagicDesktopWindow(QMainWindow):
         self.passthrough_enabled = False
 
         self.setWindowTitle("Magic Desktop | 控制中心")
-        self.setMinimumSize(600, 700)
-        self.resize(660, 820)
+        self.setMinimumSize(620, 760)
+        self.resize(700, 900)
         self._build_ui()
         self._apply_style()
 
@@ -478,9 +515,30 @@ class MagicDesktopWindow(QMainWindow):
         export_caption.setObjectName("sectionCaption")
         export_layout.addWidget(export_caption)
 
-        export_hint = QLabel("1280 × 720  ·  30 FPS  ·  8 秒动画")
-        export_hint.setObjectName("fieldLabel")
-        export_layout.addWidget(export_hint)
+        export_settings_row = QHBoxLayout()
+        export_settings_row.setSpacing(12)
+        export_resolution_label = QLabel("1920 × 1080  ·  30 FPS")
+        export_resolution_label.setObjectName("fieldLabel")
+        self.duration_combo = QComboBox()
+        self.duration_combo.addItem("5 秒", 5)
+        self.duration_combo.addItem("8 秒（推荐）", 8)
+        self.duration_combo.addItem("10 秒", 10)
+        self.duration_combo.addItem("15 秒", 15)
+        self.duration_combo.setMinimumHeight(38)
+        saved_duration = int(self.settings.get("export_duration_seconds", 8))
+        saved_index = self.duration_combo.findData(saved_duration)
+        self.duration_combo.setCurrentIndex(saved_index if saved_index >= 0 else 1)
+        self.duration_combo.currentIndexChanged.connect(self._update_export_hint)
+        export_settings_row.addWidget(export_resolution_label)
+        export_settings_row.addStretch(1)
+        export_settings_row.addWidget(QLabel("时长"))
+        export_settings_row.addWidget(self.duration_combo)
+        export_layout.addLayout(export_settings_row)
+
+        self.export_hint = QLabel()
+        self.export_hint.setObjectName("fieldLabel")
+        export_layout.addWidget(self.export_hint)
+        self._update_export_hint()
 
         export_buttons = QHBoxLayout()
         export_buttons.setSpacing(10)
@@ -496,7 +554,7 @@ class MagicDesktopWindow(QMainWindow):
         export_buttons.addWidget(self.export_gif_button, 1)
         export_layout.addLayout(export_buttons)
 
-        export_note = QLabel("MP4 可包含背景音乐；GIF 为无声动画。首次导出会调用 Godot 渲染并由 FFmpeg 编码。")
+        export_note = QLabel("MP4：高清画质，可选背景音乐。GIF：无声循环动画。导出时长以此处选择为准。")
         export_note.setObjectName("footer")
         export_note.setWordWrap(True)
         export_layout.addWidget(export_note)
@@ -542,7 +600,7 @@ class MagicDesktopWindow(QMainWindow):
         root.addWidget(actions_card)
 
         footer = QLabel(
-            "交互提示  ·  点击蛋糕触发弹跳与星光爆发，按住拖动可移动悬浮窗口。\n"
+            "交互提示  ·  蛋糕会自动缓慢旋转；点击触发彩色星光，按住拖动可移动悬浮窗口。\n"
             "开启鼠标穿透后，鼠标操作将直接传递给桌面下方的应用。"
         )
         footer.setObjectName("footer")
@@ -690,6 +748,17 @@ class MagicDesktopWindow(QMainWindow):
         if self.godot_process and self.godot_process.poll() is None:
             self._send_command({"action": "set_music_volume", "value": volume})
 
+    def _update_export_hint(self) -> None:
+        if not hasattr(self, "duration_combo"):
+            return
+        duration = int(self.duration_combo.currentData() or 8)
+        frames = duration * 30
+        self.export_hint.setText(
+            f"本次导出：{duration} 秒  ·  {frames} 帧  ·  1920 × 1080  ·  30 FPS"
+        )
+        self.settings["export_duration_seconds"] = duration
+        save_settings(self.settings)
+
     def _start_export(self, export_format: str) -> None:
         if self.export_worker and self.export_worker.isRunning():
             QMessageBox.information(self, "正在导出", "当前导出任务完成后才能开始下一次导出。")
@@ -741,6 +810,7 @@ class MagicDesktopWindow(QMainWindow):
             music_volume=float(self.music_volume_slider.value() / 100.0),
             birthday_text=self.text_input.text().strip() or "Happy Birthday",
             rotation_speed=self.speed_slider.value(),
+            duration_seconds=int(self.duration_combo.currentData() or 8),
         )
         self.export_worker.progress.connect(
             lambda message: self._set_status(message, "warning")
