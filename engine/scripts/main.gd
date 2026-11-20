@@ -97,6 +97,9 @@ func _build_scene() -> void:
     var sponge := _make_material(Color("#d99a55"), 0.02, 0.42)
     var cream := _make_material(Color("#fff0dc"), 0.0, 0.31)
     var plate_material := _make_material(Color("#e7edf8"), 0.28, 0.20)
+    ganache.clearcoat_enabled = true
+    ganache.clearcoat = 0.82
+    ganache.clearcoat_roughness = 0.12
     var gold := _make_material(Color("#f6bd62"), 0.72, 0.20, Color("#ffbf55"), 0.28)
     var blue := _make_material(Color("#55c5e8"), 0.28, 0.23)
     var candle_white := _make_material(Color("#eaf8ff"), 0.06, 0.25)
@@ -145,19 +148,11 @@ func _build_scene() -> void:
         )
         drip.scale = Vector3(0.86, length / 0.15, 0.86)
 
-    # Piped cream rosettes around the rim.
+    # Hand-piped cream swirls around the top edge.
     for index in range(14):
         var angle := TAU * float(index) / 14.0
-        var position := Vector3(cos(angle) * 0.91, 0.715, sin(angle) * 0.91)
-        var rosette := _add_sphere(cake_root, "CreamRosette_%02d" % index, 0.13, cream, position)
-        rosette.scale = Vector3(1.0, 0.78, 1.0)
-        _add_sphere(
-            cake_root,
-            "RosettePeak_%02d" % index,
-            0.065,
-            cream,
-            position + Vector3(0.0, 0.075, 0.0)
-        )
+        var position := Vector3(cos(angle) * 0.91, 0.705, sin(angle) * 0.91)
+        _add_cream_swirl(cake_root, position, cream, "CreamRosette_%02d" % index)
 
     # Fine sugar sprinkles and glossy candy pearls on the top.
     for index in range(105):
@@ -196,6 +191,56 @@ func _build_scene() -> void:
     _add_ambient_particles()
     _add_burst_particles(gold)
     _add_birthday_text()
+
+
+func _add_cream_swirl(parent: Node3D, center: Vector3, material: Material, node_name: String) -> void:
+    const STEPS := 30
+    const RING_SEGMENTS := 9
+
+    var surface := SurfaceTool.new()
+    surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+    var previous_ring: Array[Vector3] = []
+
+    for step in range(STEPS):
+        var t := float(step) / float(STEPS - 1)
+        var angle := t * TAU * 1.55
+        var orbit_radius := 0.105 * (1.0 - t * 0.72)
+        var tube_radius := 0.038 * (1.0 - t * 0.58)
+        var path_position := Vector3(
+            cos(angle) * orbit_radius,
+            t * 0.15,
+            sin(angle) * orbit_radius
+        )
+        var current_ring: Array[Vector3] = []
+
+        for ring_index in range(RING_SEGMENTS):
+            var ring_angle := TAU * float(ring_index) / float(RING_SEGMENTS)
+            current_ring.append(
+                center + path_position + Vector3(
+                    cos(ring_angle) * tube_radius,
+                    0.0,
+                    sin(ring_angle) * tube_radius
+                )
+            )
+
+        if not previous_ring.is_empty():
+            for ring_index in range(RING_SEGMENTS):
+                var next_index := (ring_index + 1) % RING_SEGMENTS
+                surface.add_vertex(previous_ring[ring_index])
+                surface.add_vertex(previous_ring[next_index])
+                surface.add_vertex(current_ring[ring_index])
+                surface.add_vertex(previous_ring[next_index])
+                surface.add_vertex(current_ring[next_index])
+                surface.add_vertex(current_ring[ring_index])
+
+        previous_ring = current_ring
+
+    surface.generate_normals()
+    var swirl := MeshInstance3D.new()
+    swirl.name = node_name
+    swirl.mesh = surface.commit()
+    swirl.material_override = material
+    parent.add_child(swirl)
 
 
 func _add_candles(candle_white: Material, blue: Material, cream: Material) -> void:
