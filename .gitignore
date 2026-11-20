@@ -1,0 +1,65 @@
+# ==============================
+# Magic Desktop - Git ignore
+# ==============================
+
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE and editor settings
+.idea/
+.vscode/
+.fleet/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+logs/
+*.log
+
+# Generated exports and temporary render files
+output/
+exports/
+rendered/
+tmp/
+temp/
+
+# Godot 4 generated cache
+.godot/
+
+# Blender backup / autosave files
+*.blend1
+*.blend2
+*.blend@
+.blend1
+.blend2
+
+# Build artifacts
+build/
+dist/
+*.pyc
+
+# Local environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Local-only FFmpeg binaries (keep scripts and documentation)
+tools/ffmpeg/bin/
