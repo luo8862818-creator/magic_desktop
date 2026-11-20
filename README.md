@@ -52,7 +52,7 @@ Godot 官方下载：https://godotengine.org/download/windows/
 2. 安装 Python 3.11+。
 3. 从 Godot 官网下载 Godot 4.4+ Standard Windows 64-bit 压缩包并解压。
 4. 将解压得到的 GUI 版文件（名称类似 `Godot_v4.5-stable_win64.exe`）放入项目的 `tools/godot/` 目录。不要只放 console 版本。
-5. 双击 `setup.bat`，创建虚拟环境并安装 PySide6。
+5. 双击 `setup.bat`，创建虚拟环境并安装 PySide6、imageio-ffmpeg（用于 MP4/GIF 编码）。
 6. 双击 `start.bat`，打开 Magic Desktop 控制中心。
 7. 程序会自动识别 `tools/godot/` 中唯一的 GUI 版 Godot exe，点击“启动桌面动画”即可。若放入多个版本，或自动识别失败，可点击“选择...”手动指定。
 
@@ -70,6 +70,9 @@ Godot 下载地址：https://godotengine.org/download/windows/
 | 鼠标左键点击蛋糕 | 蛋糕弹跳并触发粒子效果 |
 | 控制中心修改祝福语 | 更新 3D 文字 |
 | 控制中心调整旋转速度 | 实时调整旋转速度 |
+| 选择背景音乐 | 播放 MP3 / OGG / WAV 音乐并调整音量 |
+| 导出 MP4 | 输出 8 秒 1280×720 视频，可包含背景音乐 |
+| 导出 GIF | 输出 8 秒循环动画，不含声音 |
 | 鼠标穿透开关 | 开启后不再拦截桌面鼠标操作 |
 | 隐藏 / 显示 | 隐藏或重新显示 3D 窗口 |
 | 停止引擎 | 退出 Godot 进程 |
