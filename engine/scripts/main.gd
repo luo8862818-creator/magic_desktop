@@ -108,6 +108,11 @@ func _build_scene() -> void:
         Color("#7bd7a0"),
         Color("#ff9c55"),
     ]
+    var candy_materials: Array[Material] = []
+    for candy_color in candy_colors:
+        candy_materials.append(
+            _make_material(candy_color, 0.16, 0.20, candy_color * 0.18, 0.14)
+        )
 
     cake_root = Node3D.new()
     cake_root.name = "HeroCake"
@@ -158,12 +163,11 @@ func _build_scene() -> void:
     for index in range(105):
         var angle := rng.randf_range(0.0, TAU)
         var radius := sqrt(rng.randf()) * 0.78
-        var color: Color = candy_colors[index % candy_colors.size()]
         var sprinkle := MeshInstance3D.new()
         var box := BoxMesh.new()
         box.size = Vector3(rng.randf_range(0.035, 0.095), 0.014, 0.022)
         sprinkle.mesh = box
-        sprinkle.material_override = _make_material(color, 0.05, 0.25, color * 0.16, 0.12)
+        sprinkle.material_override = candy_materials[index % candy_materials.size()]
         sprinkle.position = Vector3(cos(angle) * radius, 0.686, sin(angle) * radius)
         sprinkle.rotation = Vector3(
             rng.randf_range(-0.10, 0.10),
@@ -175,12 +179,11 @@ func _build_scene() -> void:
     for index in range(28):
         var angle := rng.randf_range(0.0, TAU)
         var radius := rng.randf_range(0.20, 0.86)
-        var pearl_color: Color = candy_colors[(index * 3) % candy_colors.size()]
         _add_sphere(
             cake_root,
             "CandyPearl_%02d" % index,
             rng.randf_range(0.025, 0.045),
-            _make_material(pearl_color, 0.18, 0.16, pearl_color * 0.2, 0.18),
+            candy_materials[(index * 3) % candy_materials.size()],
             Vector3(cos(angle) * radius, 0.70, sin(angle) * radius)
         )
 
@@ -368,7 +371,8 @@ func _add_ribbon_mesh(points: Array[Vector3], width: float, material: Material, 
     ribbon.mesh = mesh
     ribbon.material_override = material
     if material is StandardMaterial3D:
-        material.cull_mode = BaseMaterial3D.CULL_DISABLED
+        var ribbon_material := material as StandardMaterial3D
+        ribbon_material.cull_mode = BaseMaterial3D.CULL_DISABLED
     add_child(ribbon)
 
 
