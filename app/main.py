@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QScrollArea,
     QMessageBox,
     QPushButton,
     QSlider,
@@ -118,8 +119,8 @@ class MagicDesktopWindow(QMainWindow):
         self.passthrough_enabled = False
 
         self.setWindowTitle("Magic Desktop | 控制中心")
-        self.setMinimumSize(500, 570)
-        self.resize(540, 620)
+        self.setMinimumSize(600, 700)
+        self.resize(660, 820)
         self._build_ui()
         self._apply_style()
 
@@ -142,14 +143,26 @@ class MagicDesktopWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         central = QWidget()
-        root = QVBoxLayout(central)
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setObjectName("mainScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        root = QVBoxLayout(content)
         root.setContentsMargins(26, 24, 26, 24)
         root.setSpacing(16)
 
         header = QVBoxLayout()
+        header.setSpacing(5)
         title = QLabel("MAGIC DESKTOP")
         title.setObjectName("appTitle")
-        subtitle = QLabel("实时 3D 桌面动画控制中心")
+        subtitle = QLabel("PREMIUM 3D DESKTOP EXPERIENCE  ·  实时动画控制中心")
         subtitle.setObjectName("subtitle")
         header.addWidget(title)
         header.addWidget(subtitle)
@@ -158,12 +171,13 @@ class MagicDesktopWindow(QMainWindow):
         status_card = QFrame()
         status_card.setObjectName("card")
         status_layout = QVBoxLayout(status_card)
-        status_layout.setContentsMargins(16, 14, 16, 14)
-        status_layout.setSpacing(6)
+        status_layout.setContentsMargins(17, 14, 17, 14)
+        status_layout.setSpacing(8)
         status_caption = QLabel("ENGINE STATUS")
         status_caption.setObjectName("sectionCaption")
         self.status_label = QLabel("正在初始化...")
         self.status_label.setObjectName("status")
+        self.status_label.setMinimumHeight(22)
         self.status_label.setWordWrap(True)
         status_layout.addWidget(status_caption)
         status_layout.addWidget(self.status_label)
@@ -172,28 +186,35 @@ class MagicDesktopWindow(QMainWindow):
         godot_card = QFrame()
         godot_card.setObjectName("card")
         godot_layout = QVBoxLayout(godot_card)
-        godot_layout.setContentsMargins(16, 14, 16, 14)
-        godot_layout.setSpacing(10)
+        godot_layout.setContentsMargins(17, 15, 17, 16)
+        godot_layout.setSpacing(11)
         godot_caption = QLabel("GODOT ENGINE")
         godot_caption.setObjectName("sectionCaption")
         godot_layout.addWidget(godot_caption)
 
         path_row = QHBoxLayout()
+        path_row.setSpacing(10)
         self.godot_path_input = QLineEdit(str(self.settings.get("godot_exe", "")))
         self.godot_path_input.setPlaceholderText("自动识别 tools/godot/，也可手动选择")
-        choose_button = QPushButton("选择...")
+        self.godot_path_input.setMinimumHeight(42)
+        choose_button = QPushButton("选择引擎")
         choose_button.setObjectName("secondaryButton")
+        choose_button.setMinimumWidth(104)
+        choose_button.setMinimumHeight(42)
         choose_button.clicked.connect(self._choose_godot)
         path_row.addWidget(self.godot_path_input, 1)
         path_row.addWidget(choose_button)
         godot_layout.addLayout(path_row)
 
         engine_buttons = QHBoxLayout()
+        engine_buttons.setSpacing(10)
         self.start_button = QPushButton("启动桌面动画")
         self.start_button.setObjectName("primaryButton")
+        self.start_button.setMinimumHeight(46)
         self.start_button.clicked.connect(self._start_engine)
         self.stop_button = QPushButton("停止引擎")
         self.stop_button.setObjectName("dangerButton")
+        self.stop_button.setMinimumHeight(46)
         self.stop_button.clicked.connect(self._stop_engine)
         engine_buttons.addWidget(self.start_button, 1)
         engine_buttons.addWidget(self.stop_button, 1)
@@ -203,148 +224,176 @@ class MagicDesktopWindow(QMainWindow):
         controls_card = QFrame()
         controls_card.setObjectName("card")
         controls = QVBoxLayout(controls_card)
-        controls.setContentsMargins(16, 14, 16, 14)
-        controls.setSpacing(12)
-        controls_caption = QLabel("ANIMATION CONTROLS")
+        controls.setContentsMargins(17, 15, 17, 16)
+        controls.setSpacing(10)
+        controls_caption = QLabel("PERSONALIZE YOUR SCENE")
         controls_caption.setObjectName("sectionCaption")
         controls.addWidget(controls_caption)
 
-        text_label = QLabel("祝福文字")
+        text_label = QLabel("生日祝福文字")
+        text_label.setObjectName("fieldLabel")
         self.text_input = QLineEdit(str(self.settings.get("birthday_text", "Happy Birthday")))
-        self.text_input.setPlaceholderText("输入要显示的文字")
+        self.text_input.setPlaceholderText("例如：Happy Birthday!")
         self.text_input.setMaxLength(32)
+        self.text_input.setMinimumHeight(42)
+
         text_row = QHBoxLayout()
+        text_row.setSpacing(10)
         text_row.addWidget(self.text_input, 1)
         apply_text_button = QPushButton("应用文字")
         apply_text_button.setObjectName("secondaryButton")
+        apply_text_button.setMinimumWidth(104)
+        apply_text_button.setMinimumHeight(42)
         apply_text_button.clicked.connect(self._apply_text)
         text_row.addWidget(apply_text_button)
         controls.addWidget(text_label)
         controls.addLayout(text_row)
 
-        speed_row = QHBoxLayout()
-        speed_label = QLabel("旋转速度")
+        speed_header = QHBoxLayout()
+        speed_header.setSpacing(8)
+        speed_label = QLabel("蛋糕旋转速度")
+        speed_label.setObjectName("fieldLabel")
         self.speed_value_label = QLabel()
         self.speed_value_label.setObjectName("valueLabel")
-        speed_row.addWidget(speed_label)
-        speed_row.addStretch(1)
-        speed_row.addWidget(self.speed_value_label)
-        controls.addLayout(speed_row)
+        speed_header.addWidget(speed_label)
+        speed_header.addStretch(1)
+        speed_header.addWidget(self.speed_value_label)
+        controls.addLayout(speed_header)
 
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
-        self.speed_slider.setRange(0, 120)
-        self.speed_slider.setValue(int(self.settings.get("rotation_speed", 24)))
+        self.speed_slider.setRange(0, 60)
+        self.speed_slider.setValue(int(self.settings.get("rotation_speed", 12)))
+        self.speed_slider.setMinimumHeight(24)
         self.speed_slider.valueChanged.connect(self._rotation_speed_changed)
         controls.addWidget(self.speed_slider)
         self._rotation_speed_changed(self.speed_slider.value())
-
         root.addWidget(controls_card)
 
         actions_card = QFrame()
         actions_card.setObjectName("card")
         actions = QVBoxLayout(actions_card)
-        actions.setContentsMargins(16, 14, 16, 14)
-        actions.setSpacing(10)
-        actions_caption = QLabel("DESKTOP ACTIONS")
+        actions.setContentsMargins(17, 15, 17, 16)
+        actions.setSpacing(11)
+        actions_caption = QLabel("DESKTOP INTERACTIONS")
         actions_caption.setObjectName("sectionCaption")
         actions.addWidget(actions_caption)
 
         row_one = QHBoxLayout()
+        row_one.setSpacing(10)
         show_button = QPushButton("显示动画")
         show_button.setObjectName("secondaryButton")
+        show_button.setMinimumHeight(46)
         show_button.clicked.connect(lambda: self._send_command({"action": "show"}))
         hide_button = QPushButton("隐藏动画")
         hide_button.setObjectName("secondaryButton")
+        hide_button.setMinimumHeight(46)
         hide_button.clicked.connect(lambda: self._send_command({"action": "hide"}))
-        row_one.addWidget(show_button)
-        row_one.addWidget(hide_button)
+        row_one.addWidget(show_button, 1)
+        row_one.addWidget(hide_button, 1)
         actions.addLayout(row_one)
 
         row_two = QHBoxLayout()
+        row_two.setSpacing(10)
         burst_button = QPushButton("触发惊喜特效")
         burst_button.setObjectName("secondaryButton")
+        burst_button.setMinimumHeight(46)
         burst_button.clicked.connect(lambda: self._send_command({"action": "burst"}))
         self.passthrough_button = QPushButton("鼠标穿透：关闭")
         self.passthrough_button.setObjectName("secondaryButton")
         self.passthrough_button.setCheckable(True)
+        self.passthrough_button.setMinimumHeight(46)
         self.passthrough_button.toggled.connect(self._toggle_passthrough)
-        row_two.addWidget(burst_button)
-        row_two.addWidget(self.passthrough_button)
+        row_two.addWidget(burst_button, 1)
+        row_two.addWidget(self.passthrough_button, 1)
         actions.addLayout(row_two)
         root.addWidget(actions_card)
 
         footer = QLabel(
-            "提示：开启鼠标穿透后，蛋糕不会接收点击和拖动。\n"
-            "点击蛋糕可触发弹跳与粒子效果；拖动蛋糕区域可移动窗口。"
+            "交互提示  ·  点击蛋糕触发弹跳与星光爆发，按住拖动可移动悬浮窗口。\\n"
+            "开启鼠标穿透后，鼠标操作将直接传递给桌面下方的应用。"
         )
         footer.setObjectName("footer")
         footer.setWordWrap(True)
+        footer.setMinimumHeight(36)
         root.addWidget(footer)
         root.addStretch(1)
 
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
         self.setCentralWidget(central)
 
     def _apply_style(self) -> None:
         self.setStyleSheet(
             """
             QMainWindow, QWidget {
-                background: #10141d;
-                color: #e8edf5;
+                background: #0d111b;
+                color: #e9eef8;
                 font-family: "Microsoft YaHei UI", "Segoe UI";
                 font-size: 13px;
             }
+            QScrollArea#mainScroll { background: #0d111b; border: 0; }
+            QScrollArea#mainScroll QWidget { background: transparent; }
             QLabel#appTitle {
-                color: #f4f7fb;
-                font-size: 25px;
-                font-weight: 800;
+                color: #f5f7fc;
+                font-size: 27px;
+                font-weight: 900;
                 letter-spacing: 2px;
             }
-            QLabel#subtitle { color: #8f9bad; font-size: 13px; }
+            QLabel#subtitle { color: #8494ad; font-size: 11px; }
             QFrame#card {
-                background: #191f2b;
-                border: 1px solid #293244;
-                border-radius: 12px;
+                background: #171f2d;
+                border: 1px solid #2a3850;
+                border-radius: 13px;
             }
             QLabel#sectionCaption {
-                color: #7e9bc5;
+                color: #86b5f2;
                 font-size: 10px;
                 font-weight: 800;
-                letter-spacing: 1.5px;
+                letter-spacing: 1.6px;
             }
-            QLabel#status { color: #cbd5e1; font-size: 13px; }
-            QLabel#valueLabel { color: #9fc5ff; font-weight: 700; }
-            QLabel#footer { color: #7f8b9d; font-size: 11px; }
+            QLabel#fieldLabel { color: #c3cede; font-size: 12px; font-weight: 600; }
+            QLabel#status { color: #d5e2f4; font-size: 13px; }
+            QLabel#valueLabel { color: #9cc9ff; font-size: 12px; font-weight: 800; }
+            QLabel#footer { color: #8492a8; font-size: 11px; }
             QLineEdit {
-                background: #0f141d;
-                border: 1px solid #354156;
-                border-radius: 7px;
-                padding: 9px 10px;
-                color: #f3f6fb;
+                background: #0e1521;
+                border: 1px solid #354660;
+                border-radius: 8px;
+                padding: 0 12px;
+                color: #f3f6fc;
                 selection-background-color: #426ca8;
             }
-            QLineEdit:focus { border: 1px solid #6a9ce5; }
+            QLineEdit:focus { border: 1px solid #6ea9f5; }
             QPushButton {
                 border: 0;
-                border-radius: 8px;
-                padding: 10px 12px;
-                font-weight: 600;
-                min-height: 18px;
+                border-radius: 9px;
+                padding: 9px 13px;
+                font-weight: 700;
+                min-height: 22px;
             }
-            QPushButton#primaryButton { background: #3478d4; color: white; }
-            QPushButton#primaryButton:hover { background: #4389e8; }
-            QPushButton#dangerButton { background: #492630; color: #ffc7d0; }
-            QPushButton#dangerButton:hover { background: #65303d; }
-            QPushButton#secondaryButton { background: #293447; color: #dce7f8; }
-            QPushButton#secondaryButton:hover { background: #35445d; }
-            QPushButton#secondaryButton:checked { background: #8a5b25; color: #fff1d8; }
+            QPushButton#primaryButton { background: #347edb; color: white; }
+            QPushButton#primaryButton:hover { background: #4a91ed; }
+            QPushButton#dangerButton { background: #482a38; color: #ffd4df; }
+            QPushButton#dangerButton:hover { background: #633448; }
+            QPushButton#secondaryButton { background: #29384f; color: #e0eafa; }
+            QPushButton#secondaryButton:hover { background: #354967; }
+            QPushButton#secondaryButton:checked { background: #8a602d; color: #fff1d8; }
             QSlider::groove:horizontal {
-                height: 5px; background: #303b4d; border-radius: 2px;
+                height: 6px; background: #2d3b50; border-radius: 3px;
             }
-            QSlider::sub-page:horizontal { background: #4f91e8; border-radius: 2px; }
+            QSlider::sub-page:horizontal { background: #5d9eea; border-radius: 3px; }
             QSlider::handle:horizontal {
-                background: #dceaff; width: 15px; margin: -5px 0;
-                border-radius: 7px;
+                background: #e7f1ff; width: 16px; margin: -6px 0;
+                border-radius: 8px;
             }
+            QScrollBar:vertical {
+                background: #101724; width: 9px; margin: 2px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #3a4d68; min-height: 28px; border-radius: 4px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
             """
         )
 
