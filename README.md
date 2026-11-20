@@ -13,8 +13,18 @@ Windows 桌面 3D 悬浮动画原型。当前版本完成第一阶段：Python �
 - 鼠标拖动窗口。
 - 鼠标穿透开关：开启后鼠标操作会传递给桌面下方窗口。
 - 自定义祝福文字、旋转速度。
+- 背景音乐选择、播放、停止和音量控制（MP3 / OGG / WAV）。
+- 点击触发原创合成提示音。
 - 自动检测 `tools/godot/` 目录中的 Godot 4 Windows GUI 可执行文件；也保留手动选择路径作为备用。
 - Python 与 Godot 通过本机 UDP（127.0.0.1）通信。
+
+## 音频与视频导出
+
+- 控制中心可选择 MP3 / OGG / WAV 背景音乐，播放、停止并调整音量。
+- 点击蛋糕或控制中心触发惊喜时，会播放程序生成的原创提示音。
+- 支持导出 8 秒、1280×720、30 FPS 的 MP4 或 GIF。
+- MP4 可包含已选择的背景音乐；GIF 不包含音频。
+- 导出过程先由 Godot Movie Maker 渲染 AVI，再由 imageio-ffmpeg 转换为 MP4 / GIF。
 
 ## 本轮视觉升级
 
@@ -25,7 +35,7 @@ Windows 桌面 3D 悬浮动画原型。当前版本完成第一阶段：Python �
 
 ## 当前版本尚未实现
 
-背景音乐、独立音效管理、MP4/GIF 离线导出、Blender 高精度模型和 EXE 安装包属于后续阶段。本版本不把这些未完成能力标记为已实现。
+Blender 高精度模型、复杂音效编辑器和 EXE 安装包属于后续阶段。本版本不把这些未完成能力标记为已实现。
 
 ## 环境要求
 
@@ -46,7 +56,7 @@ Godot 官方下载：https://godotengine.org/download/windows/
 6. 双击 `start.bat`，打开 Magic Desktop 控制中心。
 7. 程序会自动识别 `tools/godot/` 中唯一的 GUI 版 Godot exe，点击“启动桌面动画”即可。若放入多个版本，或自动识别失败，可点击“选择...”手动指定。
 
-首次运行新版场景前，建议先双击 `check_engine.bat`，让 Godot 以 headless 模式检查项目和 GDScript 是否能正常加载；检查通过后再运行 `start.bat`。
+首次运行新版场景前，建议先双击 `check_engine.bat`，检查 Python 语法和 Godot 项目/GDScript 是否能正常加载；检查通过后再运行 `start.bat`。
 
 Godot 下载地址：https://godotengine.org/download/windows/
 
