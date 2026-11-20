@@ -63,3 +63,6 @@ dist/
 
 # Local-only FFmpeg binaries (keep scripts and documentation)
 tools/ffmpeg/bin/
+
+# Local machine settings
+config/settings.local.json
