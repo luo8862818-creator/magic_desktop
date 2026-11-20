@@ -8,9 +8,7 @@ var udp := PacketPeerUDP.new()
 var export_mode := false
 var cake_root: Node3D
 var mascot_root: Node3D
-var mascot_base_y := -0.62
 var birthday_label: Label3D
-var birthday_shadow: Label3D
 var music_player: AudioStreamPlayer
 var sfx_player: AudioStreamPlayer
 var export_backdrop: MeshInstance3D
@@ -27,15 +25,18 @@ var drag_moved := false
 var drag_mouse_origin := Vector2i.ZERO
 var drag_window_origin := Vector2i.ZERO
 var rng := RandomNumberGenerator.new()
-var halo_ring: MeshInstance3D
-var cloche_light: OmniLight3D
+var warm_rim: OmniLight3D
+var softbox: DirectionalLight3D
+var streamers: Array[MeshInstance3D] = []
+var star_sizes: Array[float] = []
+var backdrop_material: ShaderMaterial
 var balloon_nodes: Array[Node3D] = []
 var balloon_base_x: Array[float] = []
 var balloon_phases: Array[float] = []
 
 
 func _ready() -> void:
-    rng.randomize()
+    rng.seed = 19117
     export_mode = OS.get_environment("MAGIC_DESKTOP_EXPORT") == "1"
 
     get_viewport().transparent_bg = not export_mode
@@ -55,6 +56,7 @@ func _ready() -> void:
     _build_scene()
     _setup_audio()
     _apply_startup_settings()
+    _animate_scene(0.0, 0.0)
 
     if not export_mode:
         _setup_mouse_region()
@@ -71,53 +73,55 @@ func _ready() -> void:
 func _process(delta: float) -> void:
     flame_clock += delta
 
-    var title_alpha := smoothstep(0.65, 2.65, flame_clock)
-    if is_instance_valid(birthday_label):
-        var title_color := birthday_label.modulate
-        title_color.a = title_alpha
-        birthday_label.modulate = title_color
-    if is_instance_valid(birthday_shadow):
-        var shadow_color := birthday_shadow.modulate
-        shadow_color.a = title_alpha * 0.58
-        birthday_shadow.modulate = shadow_color
+    _animate_scene(flame_clock, delta)
+    _poll_ipc()
 
-    if is_instance_valid(cloche_light):
-        cloche_light.light_energy = 0.12 + sin(flame_clock * 1.15) * 0.035
 
-    if is_instance_valid(cake_root):
-        cake_root.rotate_y(deg_to_rad(rotation_speed_degrees) * delta)
-        cake_root.position.y = sin(flame_clock * 1.15) * 0.025
-
-    if is_instance_valid(mascot_root):
-        mascot_root.position.y = mascot_base_y + sin(flame_clock * 1.8 + 0.6) * 0.035
-        mascot_root.rotation.z = sin(flame_clock * 1.25) * 0.035
+func _animate_scene(time: float, delta: float) -> void:
+    var intro := smoothstep(0.0, 2.0, time)
+    var focus := smoothstep(5.0, 8.0, time)
+    var reveal := smoothstep(8.0, 10.8, time)
+    birthday_label.modulate.a = reveal
+    birthday_label.position.y = 2.14 + reveal * 0.15
+    softbox.light_energy = 0.17 + 0.37 * intro + 0.16 * focus
+    warm_rim.light_energy = 0.22 + 0.66 * focus
+    backdrop_material.set_shader_parameter("arrival", intro)
+    cake_root.rotate_y(deg_to_rad(rotation_speed_degrees) * delta)
+    mascot_root.rotation.x = 0.03 * sin(time * 1.5)
+    mascot_root.rotation.y = -0.24 + 0.06 * sin(time * 0.92)
 
     for index in range(flame_nodes.size()):
-        var pulse := 1.0 + sin(flame_clock * 10.0 + float(index) * 1.9) * 0.13
+        var phase := time * 8.0 + float(index) * 2.1
+        var flicker := 0.68 * sin(phase) + 0.32 * sin(phase * 1.83)
         var flame := flame_nodes[index]
-        flame.scale = Vector3(0.68 * pulse, 1.15 / pulse, 0.68 * pulse)
-        flame.position.y = 1.47 + sin(flame_clock * 7.0 + float(index)) * 0.025
-        flame.rotation.z = sin(flame_clock * 5.0 + float(index) * 2.0) * 0.10
-        flame_lights[index].light_energy = 1.15 + sin(flame_clock * 11.0 + float(index)) * 0.28
+        flame.scale = Vector3(0.68 - flicker * 0.045, 1.15 + flicker * 0.10, 0.68)
+        flame.rotation.z = 0.09 * sin(phase * 0.52)
+        flame_lights[index].light_energy = (0.23 + focus * 0.22) * (1.0 + flicker * 0.18)
 
     for index in range(star_nodes.size()):
         var star := star_nodes[index]
         var phase := star_phases[index]
-        star.position.y = star_base_positions[index].y + sin(flame_clock * 1.35 + phase) * 0.10
-        star.rotation.z += delta * (0.22 + float(index % 4) * 0.08)
+        var drift := time * (0.32 + float(index % 7) * 0.09) + phase
+        var twinkle := smoothstep(-0.60, 0.93, sin(drift * 1.8))
+        star.position = star_base_positions[index] + Vector3(0.14 * sin(drift), 0.09 * cos(drift * 0.72), 0.09 * sin(drift))
+        star.rotation.z = phase + drift * 0.15
+        star.scale = Vector3.ONE * maxf(0.0001, intro * star_sizes[index] * twinkle)
 
-    if is_instance_valid(halo_ring):
-        halo_ring.rotate_z(delta * 0.12)
+    var ribbon_time := maxf(0.0, time - 2.0)
+    var motion := smoothstep(0.0, 2.0, ribbon_time)
+    for index in range(streamers.size()):
+        var phase := float(index) * 1.6
+        streamers[index].rotation.z = 0.023 * motion * sin(ribbon_time * 0.65 + phase)
+        streamers[index].position.y = 0.11 * motion * sin(ribbon_time * 0.54 + phase)
 
     for index in range(balloon_nodes.size()):
         var balloon := balloon_nodes[index]
         var phase := balloon_phases[index]
-        var progress := fposmod(flame_clock * 0.085 + phase, 1.0)
-        balloon.position.y = lerpf(-2.65, 2.55, progress)
-        balloon.position.x = balloon_base_x[index] + sin(flame_clock * 0.72 + phase * TAU) * 0.14
-        balloon.rotation.z = sin(flame_clock * 0.62 + phase * TAU) * 0.10
-
-    _poll_ipc()
+        var lift := smoothstep(2.0 + phase, 8.6 + phase * 1.55, time)
+        balloon.position.y = lerpf(-5.0, 0.05 + floorf(float(index) * 0.5) * 0.57, lift)
+        balloon.position.x = balloon_base_x[index] + 0.14 * lift * sin(time * (0.67 + phase * 0.12) + phase)
+        balloon.rotation.z = 0.16 * lift * sin(time * 0.81 + phase * 2.0)
+        balloon.rotation.y = 0.28 * lift * sin(time * 0.61 + float(index))
 
 
 func _setup_environment() -> void:
@@ -126,13 +130,8 @@ func _setup_environment() -> void:
     environment.background_color = Color("#0b1020") if export_mode else Color(0.0, 0.0, 0.0, 0.0)
     environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
     environment.ambient_light_color = Color("#b9c9e8")
-    environment.ambient_light_energy = 0.62
+    environment.ambient_light_energy = 0.30
     environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-    environment.glow_enabled = true
-    environment.glow_intensity = 0.28
-    environment.glow_strength = 0.62
-    environment.glow_bloom = 0.025
-
     var world := WorldEnvironment.new()
     world.name = "PremiumWorldEnvironment"
     world.environment = environment
@@ -240,12 +239,11 @@ func _build_scene() -> void:
     _add_export_backdrop()
     _add_lighting()
     _add_camera()
-    _add_ambient_particles()
     _add_birthday_text()
     _add_mascot_bear()
     _add_gift_box()
     _add_balloons()
-    _add_glass_cloche()
+    _add_stage()
 
 
 func _add_cream_swirl(parent: Node3D, center: Vector3, material: Material, node_name: String) -> void:
@@ -350,7 +348,7 @@ func _add_candles(candle_white: Material, blue: Material, cream: Material) -> vo
         flame_mesh.radial_segments = 24
         flame.mesh = flame_mesh
         flame.material_override = _make_material(
-            Color("#ff9a36"), 0.0, 0.16, Color("#ff6b24"), 2.8
+            Color("#ff9a36"), 0.0, 0.16, Color("#ff6b24"), 1.12
         )
         flame.position.y = 1.47
         flame.scale = Vector3(0.68, 1.15, 0.68)
@@ -363,11 +361,11 @@ func _add_candles(candle_white: Material, blue: Material, cream: Material) -> vo
         inner_mesh.height = 0.16
         inner_flame.mesh = inner_mesh
         inner_flame.material_override = _make_material(
-            Color("#fff0a8"), 0.0, 0.12, Color("#ffe28a"), 2.4
+            Color("#fff0a8"), 0.0, 0.12, Color("#ffe28a"), 1.45
         )
-        inner_flame.position = Vector3(0.0, 1.455, 0.025)
+        inner_flame.position = Vector3(0.0, -0.014, 0.059)
         inner_flame.scale = Vector3(0.58, 1.12, 0.58)
-        candle_group.add_child(inner_flame)
+        flame.add_child(inner_flame)
 
         var flame_light := OmniLight3D.new()
         flame_light.light_color = Color("#ffad58")
@@ -461,8 +459,7 @@ func _add_strawberries() -> void:
 func _add_mascot_bear() -> void:
     mascot_root = Node3D.new()
     mascot_root.name = "CuteTeddyMascot"
-    mascot_root.position = Vector3(1.16, -0.62, 0.78)
-    mascot_base_y = mascot_root.position.y
+    mascot_root.position = Vector3(1.97, -0.89, 0.33)
     add_child(mascot_root)
 
     var fur := _make_material(Color("#c98d62"), 0.0, 0.62)
@@ -547,7 +544,7 @@ func gold_material_for_mascot() -> Material:
 func _add_gift_box() -> void:
     var gift_root := Node3D.new()
     gift_root.name = "TinyBirthdayGift"
-    gift_root.position = Vector3(-1.22, -0.62, 0.76)
+    gift_root.position = Vector3(-1.95, -0.89, 0.47)
     add_child(gift_root)
 
     var gift_pink := _make_material(Color("#f28eb0"), 0.08, 0.30)
@@ -608,29 +605,19 @@ func _add_ribbons() -> void:
         var t := float(index) / 89.0
         var angle := t * TAU * 1.25
         left_points.append(Vector3(
-            -1.92 + 0.22 * sin(angle),
+            -2.14 + 0.22 * sin(angle),
             -0.05 + t * 1.85,
-            -1.25 + 0.10 * cos(angle)
+            -2.0 + 0.20 * cos(angle)
         ))
         right_points.append(Vector3(
-            1.92 + 0.20 * sin(angle + 1.2),
+            2.25 + 0.20 * sin(angle + 1.2),
             0.02 + t * 1.72,
-            -1.30 + 0.10 * cos(angle + 1.2)
+            -2.2 + 0.20 * cos(angle + 1.2)
         ))
 
     _add_ribbon_mesh(left_points, 0.105, pink, "FloatingPinkRibbon")
     _add_ribbon_mesh(right_points, 0.095, cyan, "FloatingBlueRibbon")
 
-    var gold_points: Array[Vector3] = []
-    for index in range(100):
-        var t := float(index) / 99.0
-        var angle := t * TAU * 1.7
-        gold_points.append(Vector3(
-            -1.78 + t * 3.56,
-            1.82 + sin(angle) * 0.13,
-            -1.38 + cos(angle) * 0.06
-        ))
-    _add_ribbon_mesh(gold_points, 0.045, gold, "GoldenStreamer")
 
 
 func _add_ribbon_mesh(points: Array[Vector3], width: float, material: Material, node_name: String) -> void:
@@ -666,42 +653,36 @@ func _add_ribbon_mesh(points: Array[Vector3], width: float, material: Material, 
         var ribbon_material := material as StandardMaterial3D
         ribbon_material.cull_mode = BaseMaterial3D.CULL_DISABLED
     add_child(ribbon)
+    streamers.append(ribbon)
 
 
 func _add_floating_stars() -> void:
     var star_mesh := _create_star_mesh()
-    var colors: Array[Color] = [
-        Color("#ffd166"),
-        Color("#79dff1"),
-        Color("#ff8db5"),
-        Color("#fff0b0"),
-        Color("#a997ff"),
-    ]
-
-    for index in range(17):
+    var colors := [Color("#daa25b"), Color("#82afd6"), Color("#cb80ac")]
+    for index in range(72):
+        var layer := index % 3
         var star := MeshInstance3D.new()
-        star.name = "FloatingStar_%02d" % index
+        star.name = "Starlight_%d_%02d" % [layer, index]
         star.mesh = star_mesh
-        var color: Color = colors[index % colors.size()]
-        var material := _make_material(color, 0.24, 0.20, color, 0.72)
+        var color: Color = colors[index % 5 % colors.size()]
+        var material := _make_material(color, 0.0, 0.5)
+        material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
         material.cull_mode = BaseMaterial3D.CULL_DISABLED
         star.material_override = material
 
         var side := -1.0 if index % 2 == 0 else 1.0
-        var base_position := Vector3(
-            side * rng.randf_range(1.70, 2.20),
-            rng.randf_range(-0.02, 1.88),
-            rng.randf_range(-0.72, -0.20)
+        var depth := -4.5 + float(layer) * 2.45
+        var spread := 5.4 - float(layer) * 1.07
+        var base := Vector3(
+            side * rng.randf_range(2.35 if layer > 0 else 0.25, spread),
+            rng.randf_range(-0.78, 2.12 + 0.34 * float(2 - layer)),
+            depth
         )
-        star.position = base_position
-        var size := rng.randf_range(0.10, 0.23)
-        star.scale = Vector3(size, size, size)
-        star.rotation = Vector3(0.0, 0.0, rng.randf_range(-PI, PI))
         add_child(star)
-
         star_nodes.append(star)
         star_phases.append(rng.randf_range(0.0, TAU))
-        star_base_positions.append(base_position)
+        star_base_positions.append(base)
+        star_sizes.append(rng.randf_range(0.014, 0.068) * (1.0 if index % 7 else 1.45))
 
 
 func _create_star_mesh() -> ArrayMesh:
@@ -709,15 +690,15 @@ func _create_star_mesh() -> ArrayMesh:
     surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 
     var points: Array[Vector3] = []
-    for index in range(10):
-        var angle := -PI * 0.5 + TAU * float(index) / 10.0
-        var radius := 0.5 if index % 2 == 0 else 0.22
+    for index in range(8):
+        var angle := -PI * 0.5 + TAU * float(index) / 8.0
+        var radius := 0.5 if index % 2 == 0 else 0.10
         points.append(Vector3(cos(angle) * radius, sin(angle) * radius, 0.0))
 
-    for index in range(10):
+    for index in range(8):
         surface.add_vertex(Vector3.ZERO)
         surface.add_vertex(points[index])
-        surface.add_vertex(points[(index + 1) % 10])
+        surface.add_vertex(points[(index + 1) % 8])
 
     surface.generate_normals()
     return surface.commit()
@@ -817,7 +798,7 @@ func _add_lighting() -> void:
     key_light.name = "SoftboxKey"
     key_light.rotation_degrees = Vector3(-48.0, -28.0, 0.0)
     key_light.light_color = Color("#fff0dc")
-    key_light.light_energy = 1.38
+    softbox = key_light
     key_light.shadow_enabled = true
     add_child(key_light)
 
@@ -825,7 +806,7 @@ func _add_lighting() -> void:
     fill_light.name = "CoolFill"
     fill_light.position = Vector3(-2.8, 2.2, 3.0)
     fill_light.light_color = Color("#9bdcff")
-    fill_light.light_energy = 0.62
+    fill_light.light_energy = 0.37
     fill_light.omni_range = 6.5
     add_child(fill_light)
 
@@ -833,7 +814,7 @@ func _add_lighting() -> void:
     rim_light.name = "WarmRim"
     rim_light.position = Vector3(2.8, 1.8, -2.2)
     rim_light.light_color = Color("#ffb76e")
-    rim_light.light_energy = 0.92
+    warm_rim = rim_light
     rim_light.omni_range = 5.5
     add_child(rim_light)
 
@@ -841,7 +822,7 @@ func _add_lighting() -> void:
     front_light.name = "FrontSoftbox"
     front_light.position = Vector3(0.0, 0.4, 4.0)
     front_light.light_color = Color("#ffffff")
-    front_light.light_energy = 0.26
+    front_light.light_energy = 0.14
     front_light.omni_range = 5.0
     add_child(front_light)
 
@@ -849,64 +830,30 @@ func _add_lighting() -> void:
 func _add_camera() -> void:
     var camera := Camera3D.new()
     camera.name = "HeroCamera"
-    camera.position = Vector3(0.0, 2.05, 7.25)
+    camera.position = Vector3(0.0, 2.18, 8.35)
     camera.fov = 38.0
     camera.current = true
     add_child(camera)
-    camera.look_at(Vector3(0.0, 0.02, 0.0), Vector3.UP)
-
-
-func _add_ambient_particles() -> void:
-    var particle_mesh := SphereMesh.new()
-    particle_mesh.radius = 0.025
-    particle_mesh.height = 0.05
-    particle_mesh.material = _make_material(Color("#ffe3a0"), 0.0, 0.2, Color("#ffe3a0"), 1.6)
-
-    var process_material := ParticleProcessMaterial.new()
-    process_material.direction = Vector3(0.0, 1.0, 0.0)
-    process_material.spread = 180.0
-    process_material.initial_velocity_min = 0.05
-    process_material.initial_velocity_max = 0.26
-    process_material.gravity = Vector3(0.0, 0.015, 0.0)
-    process_material.scale_min = 0.35
-    process_material.scale_max = 1.25
-
-    var particles := GPUParticles3D.new()
-    particles.name = "AmbientGlitter"
-    particles.amount = 95
-    particles.lifetime = 5.0
-    particles.preprocess = 2.5
-    particles.visibility_aabb = AABB(Vector3(-4.0, -2.0, -2.0), Vector3(8.0, 6.0, 4.0))
-    particles.process_material = process_material
-    particles.draw_pass_1 = particle_mesh
-    particles.emitting = true
-    add_child(particles)
+    camera.look_at(Vector3(0.0, 0.56, 0.0), Vector3.UP)
 
 
 func _add_birthday_text() -> void:
-    birthday_shadow = Label3D.new()
-    birthday_shadow.name = "BirthdayTextShadow"
-    birthday_shadow.text = "Happy Birthday"
-    birthday_shadow.font_size = 58
-    birthday_shadow.pixel_size = 0.0037
-    birthday_shadow.modulate = Color("#25131c")
-    birthday_shadow.outline_size = 0
-    birthday_shadow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    birthday_shadow.position = Vector3(0.025, -1.66, 0.42)
-    add_child(birthday_shadow)
-
     birthday_label = Label3D.new()
     birthday_label.name = "BirthdayText"
     birthday_label.text = "Happy Birthday"
-    birthday_label.font_size = 58
-    birthday_label.pixel_size = 0.0037
-    birthday_label.modulate = Color("#ffe0a2")
-    birthday_label.outline_size = 7
-    birthday_label.outline_modulate = Color("#4b2530")
-    birthday_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    birthday_label.position = Vector3(0.0, -1.63, 0.46)
+    var display_font := SystemFont.new()
+    display_font.font_names = PackedStringArray(["Georgia", "DejaVu Serif"])
+    display_font.font_italic = true
+    birthday_label.font = display_font
+    birthday_label.font_size = 104
+    birthday_label.pixel_size = 0.00335
+    birthday_label.width = 1180.0
+    birthday_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    birthday_label.modulate = Color("#f4d7a2")
+    birthday_label.outline_size = 0
+    birthday_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+    birthday_label.position = Vector3(0.0, 2.14, -0.22)
     add_child(birthday_label)
-
 
 
 func _add_balloons() -> void:
@@ -920,27 +867,30 @@ func _add_balloons() -> void:
         Color("#e9b8ef"),
         Color("#9ec8ff"),
     ]
-    var x_positions: Array[float] = [-2.18, 2.20, -2.38, 2.38, -1.98, 2.02, -2.30, 2.32]
+    var x_positions: Array[float] = [-3.42, 3.16, -2.71, 2.67, -3.63, 3.71, -2.72, 3.22]
 
     for index in range(colors.size()):
         var root := Node3D.new()
         root.name = "RisingBalloon_%02d" % index
-        root.position = Vector3(x_positions[index], -2.65, -1.65 - float(index % 3) * 0.18)
+        root.position = Vector3(x_positions[index], -2.65, -0.9 - float(index % 3) * 0.58)
         add_child(root)
 
         var color: Color = colors[index]
         var balloon_material := _make_material(color, 0.04, 0.22, color * 0.10, 0.08)
 
+        balloon_material.metallic = 0.40 if index % 3 == 0 else 0.04
+        balloon_material.clearcoat_enabled = true
+        balloon_material.clearcoat = 0.8
         var body := MeshInstance3D.new()
-        body.name = "PastelLatex"
+        body.name = "PearlescentEnvelope"
         var body_mesh := SphereMesh.new()
-        body_mesh.radius = 0.205 if index % 3 == 0 else 0.175
-        body_mesh.height = 0.48 if index % 3 == 0 else 0.42
+        body_mesh.radius = 0.40 if index % 3 == 0 else 0.29
+        body_mesh.height = 0.94 if index % 3 == 0 else 0.72
         body_mesh.radial_segments = 32
         body_mesh.rings = 20
         body.mesh = body_mesh
         body.material_override = balloon_material
-        body.scale = Vector3(0.78, 1.0, 0.72)
+        body.scale = Vector3(0.85, 1.0, 0.86)
         root.add_child(body)
 
         var knot := _add_sphere(
@@ -948,146 +898,105 @@ func _add_balloons() -> void:
             "BalloonKnot",
             0.045,
             balloon_material,
-            Vector3(0.0, -0.215, 0.0)
+            Vector3(0.0, -body_mesh.height * 0.5, 0.0)
         )
         knot.scale = Vector3(0.72, 0.8, 0.72)
 
-        var string_material := _make_material(
-            Color(0.96, 0.91, 0.87, 0.58), 0.0, 0.52, Color("#fff4ec"), 0.025
-        )
-        string_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-
-        var string_mesh := CylinderMesh.new()
-        string_mesh.top_radius = 0.003
-        string_mesh.bottom_radius = 0.003
-        string_mesh.height = 0.62
-        string_mesh.radial_segments = 6
-        var string_instance := MeshInstance3D.new()
-        string_instance.name = "FineBalloonString"
-        string_instance.mesh = string_mesh
-        string_instance.material_override = string_material
-        string_instance.position.y = -0.53
-        root.add_child(string_instance)
-
-        var highlight := _add_sphere(
-            root,
-            "SoftSpecularHighlight",
-            0.032,
-            _make_material(Color("#ffffff"), 0.0, 0.12, Color("#ffffff"), 0.18),
-            Vector3(-0.065, 0.075, 0.105)
-        )
-        highlight.scale = Vector3(0.48, 0.92, 0.30)
+        var tether := Curve3D.new()
+        var tail := -0.67 - float(index % 3) * 0.13
+        for step in range(22):
+            var u := float(step) / 21.0
+            tether.add_point(knot.position + Vector3(0.13 * sin(u * TAU + float(index)) * u, tail * u, 0.08 * sin(u * PI)))
+        _add_tube(root, "CurledSilkTether", tether, 0.006, _make_material(Color("#ba936b"), 0.42, 0.45))
 
         balloon_nodes.append(root)
         balloon_base_x.append(x_positions[index])
-        balloon_phases.append(float(index) * 0.115)
+        balloon_phases.append(float(index) * 0.26)
 
 
-func _create_glass_dome_mesh(radius: float, height: float) -> ArrayMesh:
-    const RINGS := 28
-    const SEGMENTS := 56
-    var surface := SurfaceTool.new()
-    surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+func _add_stage() -> void:
+    var brass := _make_material(Color("#bf8750"), 0.56, 0.29, Color("#b98347"), 0.18)
+    var velvet := _make_material(Color("#34223e"), 0.12, 0.59)
+    _add_cylinder(self, "VelvetDais", 2.48, 2.55, 0.17, -0.98, velvet)
+    _add_torus(self, "DaisBrassInlay", 2.45, 2.49, 0.024, -0.907, brass)
+    _add_torus(self, "DaisLowerInlay", 2.49, 2.54, 0.019, -1.016, brass)
 
-    for ring in range(RINGS):
-        var theta0 := (PI * 0.5) * float(ring) / float(RINGS)
-        var theta1 := (PI * 0.5) * float(ring + 1) / float(RINGS)
-
-        for segment in range(SEGMENTS):
-            var phi0 := TAU * float(segment) / float(SEGMENTS)
-            var phi1 := TAU * float(segment + 1) / float(SEGMENTS)
-
-            var p00 := Vector3(
-                radius * sin(theta0) * cos(phi0),
-                height * cos(theta0),
-                radius * sin(theta0) * sin(phi0)
-            )
-            var p01 := Vector3(
-                radius * sin(theta0) * cos(phi1),
-                height * cos(theta0),
-                radius * sin(theta0) * sin(phi1)
-            )
-            var p10 := Vector3(
-                radius * sin(theta1) * cos(phi0),
-                height * cos(theta1),
-                radius * sin(theta1) * sin(phi0)
-            )
-            var p11 := Vector3(
-                radius * sin(theta1) * cos(phi1),
-                height * cos(theta1),
-                radius * sin(theta1) * sin(phi1)
-            )
-
-            surface.add_vertex(p00)
-            surface.add_vertex(p10)
-            surface.add_vertex(p01)
-            surface.add_vertex(p01)
-            surface.add_vertex(p10)
-            surface.add_vertex(p11)
-
-    surface.generate_normals()
-    return surface.commit()
-
-
-func _add_glass_cloche() -> void:
-    var glass_shader := Shader.new()
-    glass_shader.code = """
+    var crystal := ShaderMaterial.new()
+    var shader := Shader.new()
+    shader.code = """
 shader_type spatial;
-render_mode blend_mix, depth_draw_never, cull_disabled;
+render_mode blend_mix, depth_draw_never;
 void fragment() {
-    float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
-    float edge = pow(1.0 - clamp(facing, 0.0, 1.0), 2.8);
-    vec3 tint = mix(vec3(0.36, 0.70, 0.86), vec3(0.86, 0.94, 1.0), edge);
-    ALBEDO = tint;
-    ROUGHNESS = 0.075;
-    METALLIC = 0.12;
-    ALPHA = 0.018 + edge * 0.19;
-    EMISSION = tint * edge * 0.12;
+    float edge = pow(1.0 - max(0.0, dot(normalize(NORMAL), normalize(VIEW))), 2.1);
+    ALBEDO = mix(vec3(0.25, 0.43, 0.64), vec3(0.68, 0.40, 0.71), UV.y);
+    ROUGHNESS = 0.23;
+    EMISSION = ALBEDO * edge * 0.24;
+    ALPHA = 0.11 + 0.37 * edge;
 }
 """
-    var glass_material := ShaderMaterial.new()
-    glass_material.shader = glass_shader
+    crystal.shader = shader
+    for index in range(3):
+        var path := Curve3D.new()
+        var radius := 2.92 + float(index) * 0.20
+        for segment in range(81):
+            var angle := PI * float(segment) / 80.0
+            path.add_point(Vector3(
+                cos(angle) * radius + float(index - 1) * 0.21,
+                -0.93 + sin(angle) * (3.89 + float(index) * 0.10),
+                -2.85 - float(index) * 0.39 + cos(angle) * 0.41
+            ))
+        _add_tube(self, "GalleryArch_%d" % index, path, 0.058 if index == 1 else 0.014, crystal if index == 1 else brass)
 
-    var dome := MeshInstance3D.new()
-    dome.name = "CrystalGlassCloche"
-    dome.mesh = _create_glass_dome_mesh(1.79, 2.72)
-    dome.material_override = glass_material
-    dome.position = Vector3(0.0, -0.68, 0.0)
-    add_child(dome)
 
-    var base_gold := _make_material(
-        Color("#f4cb7a"), 0.76, 0.16, Color("#ffd98d"), 0.18
-    )
-    _add_torus(self, "ClocheGoldFootRing", 1.72, 1.78, 0.025, -0.665, base_gold)
-
-    var inner_glow := _make_material(
-        Color("#8edcf2"), 0.48, 0.22, Color("#83dfff"), 0.22
-    )
-    _add_torus(self, "ClocheInnerLightLine", 1.685, 1.70, 0.012, -0.625, inner_glow)
-
-    cloche_light = OmniLight3D.new()
-    cloche_light.name = "ClocheSoftCyanGlow"
-    cloche_light.position = Vector3(0.0, 0.28, -0.25)
-    cloche_light.light_color = Color("#9be7f3")
-    cloche_light.light_energy = 0.12
-    cloche_light.omni_range = 3.8
-    add_child(cloche_light)
+func _add_tube(parent: Node3D, title: String, path: Curve3D, radius: float, material: Material) -> void:
+    const SIDES := 12
+    var surface := SurfaceTool.new()
+    surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+    var last := path.point_count - 1
+    for row in range(path.point_count):
+        var center := path.get_point_position(row)
+        var tangent := (path.get_point_position(mini(row + 1, last)) -
+            path.get_point_position(maxi(row - 1, 0))).normalized()
+        var across := tangent.cross(Vector3.BACK).normalized()
+        var up := tangent.cross(across)
+        for column in range(SIDES + 1):
+            var angle := TAU * float(column) / float(SIDES)
+            var normal := across * cos(angle) + up * sin(angle)
+            surface.set_normal(normal)
+            surface.set_uv(Vector2(float(column) / float(SIDES), float(row) / float(last)))
+            surface.add_vertex(center + radius * normal)
+    for row in range(last):
+        for column in range(SIDES):
+            var a := row * (SIDES + 1) + column
+            var b := a + SIDES + 1
+            for vertex in [a, b, a + 1, a + 1, b, b + 1]:
+                surface.add_index(vertex)
+    var mesh := MeshInstance3D.new()
+    mesh.name = title
+    mesh.mesh = surface.commit()
+    mesh.material_override = material
+    parent.add_child(mesh)
 
 
 func _add_export_backdrop() -> void:
     var quad := QuadMesh.new()
-    quad.size = Vector2(16.0, 9.0)
+    quad.size = Vector2(22.0, 15.0)
 
     var shader := Shader.new()
     shader.code = """
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never;
+uniform float arrival = 0.0;
 void fragment() {
     vec2 p = UV * 2.0 - 1.0;
-    float halo = exp(-dot(p * vec2(1.0, 0.78), p * vec2(1.0, 0.78)) * 2.2);
-    vec3 edge_color = vec3(0.018, 0.022, 0.055);
-    vec3 center_color = vec3(0.16, 0.075, 0.13);
-    ALBEDO = mix(edge_color, center_color, halo * 0.82);
+    float bloom = exp(-dot(p * vec2(1.8, 1.6), p * vec2(1.8, 1.6)));
+    float rose = exp(-length((p - vec2(-0.43, -0.04)) * vec2(2.3, 1.6)) * 3.2);
+    float blue = exp(-length((p - vec2(0.46, 0.11)) * vec2(2.0, 1.5)) * 3.0);
+    vec3 night = vec3(0.017, 0.012, 0.041);
+    vec3 light = bloom * vec3(0.14, 0.075, 0.17);
+    light += rose * vec3(0.18, 0.045, 0.10) + blue * vec3(0.034, 0.085, 0.17);
+    float pool = exp(-length((p - vec2(0.0, 0.35)) * vec2(2.0, 5.5)) * 2.5);
+    ALBEDO = night + arrival * (light + pool * vec3(0.10, 0.047, 0.078));
 }
 """
     var shader_material := ShaderMaterial.new()
@@ -1096,8 +1005,9 @@ void fragment() {
     export_backdrop = MeshInstance3D.new()
     export_backdrop.name = "ExportOnlyGradientBackdrop"
     export_backdrop.mesh = quad
+    backdrop_material = shader_material
     export_backdrop.material_override = shader_material
-    export_backdrop.position = Vector3(0.0, 0.0, -3.4)
+    export_backdrop.position = Vector3(0.0, -0.56, -5.8)
     export_backdrop.visible = export_mode
     add_child(export_backdrop)
 
@@ -1123,7 +1033,6 @@ func _apply_startup_settings() -> void:
     var env_text := OS.get_environment("MAGIC_DESKTOP_TEXT").strip_edges()
     if not env_text.is_empty():
         birthday_label.text = env_text.left(32)
-        birthday_shadow.text = birthday_label.text
 
     var env_volume := OS.get_environment("MAGIC_DESKTOP_MUSIC_VOLUME")
     if not env_volume.is_empty() and env_volume.is_valid_float():
@@ -1278,8 +1187,6 @@ func _handle_command(command: Dictionary) -> void:
             var display_text := new_text.left(32) if not new_text.is_empty() else "Happy Birthday"
             if is_instance_valid(birthday_label):
                 birthday_label.text = display_text
-            if is_instance_valid(birthday_shadow):
-                birthday_shadow.text = display_text
         "set_music":
             _load_music_file(str(command.get("path", "")))
         "play_music":
@@ -1310,15 +1217,7 @@ func _handle_command(command: Dictionary) -> void:
 
 
 func _trigger_surprise() -> void:
-    # Click feedback is intentionally restrained: a soft chime and a small
-    # teddy-bear nod only. No expanding particles, white flashes or ghost trails.
     _play_sparkle_sound()
-
-    if is_instance_valid(mascot_root):
-        var mascot_tween := create_tween()
-        mascot_tween.tween_property(mascot_root, "rotation:y", 0.10, 0.18)
-        mascot_tween.tween_property(mascot_root, "rotation:y", -0.06, 0.20)
-        mascot_tween.tween_property(mascot_root, "rotation:y", 0.0, 0.22)
 
 
 func _input(event: InputEvent) -> void:

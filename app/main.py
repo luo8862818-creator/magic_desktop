@@ -89,7 +89,7 @@ def load_settings() -> dict[str, Any]:
         "window_height": 630,
         "music_file": "",
         "music_volume": 0.55,
-        "export_duration_seconds": 8,
+        "export_duration_seconds": 13,
     }
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     source_file = CONFIG_FILE if CONFIG_FILE.exists() else DEFAULT_CONFIG_FILE
@@ -246,7 +246,7 @@ class ExportWorker(QThread):
                         "-map", "1:a:0",
                         "-c:a", "aac",
                         "-b:a", "192k",
-                        "-shortest",
+                        "-af", "apad",
                     ])
                 else:
                     encode_command.append("-an")
@@ -540,14 +540,15 @@ class MagicDesktopWindow(QMainWindow):
         export_resolution_label = QLabel("1920 × 1080  ·  30 FPS")
         export_resolution_label.setObjectName("fieldLabel")
         self.duration_combo = QComboBox()
+        self.duration_combo.addItem("13 秒（完整庆典）", 13)
         self.duration_combo.addItem("5 秒", 5)
-        self.duration_combo.addItem("8 秒（推荐）", 8)
+        self.duration_combo.addItem("8 秒", 8)
         self.duration_combo.addItem("10 秒", 10)
         self.duration_combo.addItem("15 秒", 15)
         self.duration_combo.setMinimumHeight(38)
-        saved_duration = int(self.settings.get("export_duration_seconds", 8))
+        saved_duration = int(self.settings.get("export_duration_seconds", 13))
         saved_index = self.duration_combo.findData(saved_duration)
-        self.duration_combo.setCurrentIndex(saved_index if saved_index >= 0 else 1)
+        self.duration_combo.setCurrentIndex(saved_index if saved_index >= 0 else 0)
         self.duration_combo.currentIndexChanged.connect(self._update_export_hint)
         export_settings_row.addWidget(export_resolution_label)
         export_settings_row.addStretch(1)
@@ -785,7 +786,7 @@ class MagicDesktopWindow(QMainWindow):
     def _update_export_hint(self, _index: int = -1) -> None:
         if not hasattr(self, "duration_combo"):
             return
-        duration = int(self.duration_combo.currentData() or 8)
+        duration = int(self.duration_combo.currentData() or 13)
         frames = duration * 30
         self.export_hint.setText(
             f"本次导出：{duration} 秒  ·  {frames} 帧  ·  1920 × 1080  ·  30 FPS"
@@ -844,7 +845,7 @@ class MagicDesktopWindow(QMainWindow):
             music_volume=float(self.music_volume_slider.value() / 100.0),
             birthday_text=self.text_input.text().strip() or "Happy Birthday",
             rotation_speed=self.speed_slider.value(),
-            duration_seconds=int(self.duration_combo.currentData() or 8),
+            duration_seconds=int(self.duration_combo.currentData() or 13),
         )
         self.export_worker.progress.connect(
             lambda message: self._set_status(message, "warning")

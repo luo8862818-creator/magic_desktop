@@ -24,7 +24,7 @@ Windows 桌面 3D 悬浮动画原型。当前版本完成第一阶段：Python �
 
 - 控制中心可选择 MP3 / OGG / WAV 背景音乐，播放、停止并调整音量。
 - 点击蛋糕或控制中心触发惊喜时，会播放程序生成的原创提示音。
-- 支持导出 5 / 8 / 10 / 15 秒 MP4 或 GIF；MP4 默认 1920×1080、30 FPS，导出区会明确显示时长和总帧数。
+- 支持导出 5 / 8 / 10 / 13 / 15 秒 MP4 或 GIF；默认 13 秒，MP4 为 1920×1080、30 FPS，导出区会明确显示时长和总帧数。
 - MP4 可包含已选择的背景音乐；GIF 不包含音频。
 - 导出过程由 Godot Movie Maker 输出无损 PNG 帧序列和 WAV 音轨，再由 FFmpeg 单次编码 MP4 / GIF，避免 AVI 中间有损压缩。
 
@@ -73,8 +73,8 @@ Godot 下载地址：https://godotengine.org/download/windows/
 | 控制中心修改祝福语 | 更新 3D 文字 |
 | 控制中心调整旋转速度 | 实时调整旋转速度 |
 | 选择背景音乐 | 播放 MP3 / OGG / WAV 音乐并调整音量 |
-| 导出 MP4 | 输出 5 / 8 / 10 / 15 秒 1920×1080 视频，可包含背景音乐 |
-| 导出 GIF | 输出 5 / 8 / 10 / 15 秒 960×540 循环动画，不含声音 |
+| 导出 MP4 | 输出 5 / 8 / 10 / 13 / 15 秒 1920×1080 视频，可包含背景音乐 |
+| 导出 GIF | 输出 5 / 8 / 10 / 13 / 15 秒 960×540 循环动画，不含声音 |
 | 鼠标穿透开关 | 开启后不再拦截桌面鼠标操作 |
 | 隐藏 / 显示 | 隐藏或重新显示 3D 窗口 |
 | 停止引擎 | 退出 Godot 进程 |
@@ -127,4 +127,4 @@ magic_desktop/
 
 ## 开发说明
 
-Godot 场景中的蛋糕与泰迪熊摆件由 GDScript 创建 CylinderMesh、SphereMesh、BoxMesh、SurfaceTool 网格、灯光和粒子节点。Movie Maker 使用 1920×1080 视口离线渲染 PNG 帧序列与 WAV 音轨。后续阶段可以把程序化模型替换为 Blender 制作的 GLB 模型，而不改变 Python 控制中心与 Godot 通信架构。
+Godot 场景中的蛋糕与泰迪熊摆件由 GDScript 创建 CylinderMesh、SphereMesh、BoxMesh、SurfaceTool 网格、灯光和分层星光节点。Movie Maker 使用 1920×1080 视口离线渲染 PNG 帧序列与 WAV 音轨。后续阶段可以把程序化模型替换为 Blender 制作的 GLB 模型，而不改变 Python 控制中心与 Godot 通信架构。
