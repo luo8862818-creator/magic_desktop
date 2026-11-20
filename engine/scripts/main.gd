@@ -5,9 +5,14 @@ const WINDOW_WIDTH := 820
 const WINDOW_HEIGHT := 720
 
 var udp := PacketPeerUDP.new()
+var export_mode := false
 var cake_root: Node3D
 var birthday_label: Label3D
+var birthday_shadow: Label3D
 var subtitle_label: Label3D
+var music_player: AudioStreamPlayer
+var sfx_player: AudioStreamPlayer
+var export_backdrop: MeshInstance3D
 var flame_nodes: Array[MeshInstance3D] = []
 var flame_lights: Array[OmniLight3D] = []
 var star_nodes: Array[MeshInstance3D] = []
@@ -27,21 +32,32 @@ var halo_ring: MeshInstance3D
 
 func _ready() -> void:
     rng.randomize()
+    export_mode = OS.get_environment("MAGIC_DESKTOP_EXPORT") == "1"
 
-    get_viewport().transparent_bg = true
+    get_viewport().transparent_bg = not export_mode
     get_viewport().msaa_3d = Viewport.MSAA_4X
-    DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS, true)
-    DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, true)
-    DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_TRANSPARENT, true)
-    DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_MOUSE_PASSTHROUGH, false)
+
+    if not export_mode:
+        DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS, true)
+        DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, true)
+        DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_TRANSPARENT, true)
+        DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_MOUSE_PASSTHROUGH, false)
 
     _setup_environment()
     _build_scene()
-    _setup_mouse_region()
-    _setup_ipc()
-    _center_window()
+    _setup_audio()
+    _apply_startup_settings()
 
-    print("Magic Desktop premium 3D overlay is ready.")
+    if not export_mode:
+        _setup_mouse_region()
+        _setup_ipc()
+        _center_window()
+    else:
+        if music_player.stream != null:
+            music_player.play()
+        get_tree().create_timer(0.75).timeout.connect(_trigger_surprise)
+
+    print("Magic Desktop premium 3D scene is ready. Export mode: ", export_mode)
 
 
 func _process(delta: float) -> void:
@@ -73,8 +89,8 @@ func _process(delta: float) -> void:
 
 func _setup_environment() -> void:
     var environment := Environment.new()
-    environment.background_mode = Environment.BG_CLEAR_COLOR
-    environment.background_color = Color(0.0, 0.0, 0.0, 0.0)
+    environment.background_mode = Environment.BG_COLOR if export_mode else Environment.BG_CLEAR_COLOR
+    environment.background_color = Color("#0b1020") if export_mode else Color(0.0, 0.0, 0.0, 0.0)
     environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
     environment.ambient_light_color = Color("#b9c9e8")
     environment.ambient_light_energy = 0.62
@@ -186,6 +202,7 @@ func _build_scene() -> void:
     _add_side_decorations(gold, cream, candy_colors)
     _add_ribbons()
     _add_floating_stars()
+    _add_export_backdrop()
     _add_lighting()
     _add_camera()
     _add_ambient_particles()
@@ -666,16 +683,16 @@ func _add_burst_particles(material: Material) -> void:
 
 
 func _add_birthday_text() -> void:
-    var shadow := Label3D.new()
-    shadow.name = "BirthdayTextShadow"
-    shadow.text = "Happy Birthday"
-    shadow.font_size = 58
-    shadow.pixel_size = 0.0037
-    shadow.modulate = Color("#25131c")
-    shadow.outline_size = 0
-    shadow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    shadow.position = Vector3(0.025, -1.57, 0.42)
-    add_child(shadow)
+    birthday_shadow = Label3D.new()
+    birthday_shadow.name = "BirthdayTextShadow"
+    birthday_shadow.text = "Happy Birthday"
+    birthday_shadow.font_size = 58
+    birthday_shadow.pixel_size = 0.0037
+    birthday_shadow.modulate = Color("#25131c")
+    birthday_shadow.outline_size = 0
+    birthday_shadow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    birthday_shadow.position = Vector3(0.025, -1.57, 0.42)
+    add_child(birthday_shadow)
 
     birthday_label = Label3D.new()
     birthday_label.name = "BirthdayText"
@@ -702,6 +719,148 @@ func _add_birthday_text() -> void:
     add_child(subtitle_label)
 
 
+func _add_export_backdrop() -> void:
+    var quad := QuadMesh.new()
+    quad.size = Vector2(14.0, 9.0)
+
+    var shader := Shader.new()
+    shader.code = """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_never;
+void fragment() {
+    vec2 p = UV * 2.0 - 1.0;
+    float halo = exp(-dot(p * vec2(1.0, 0.78), p * vec2(1.0, 0.78)) * 2.2);
+    vec3 edge_color = vec3(0.012, 0.022, 0.052);
+    vec3 center_color = vec3(0.12, 0.055, 0.12);
+    ALBEDO = mix(edge_color, center_color, halo * 0.82);
+}
+"""
+    var shader_material := ShaderMaterial.new()
+    shader_material.shader = shader
+
+    export_backdrop = MeshInstance3D.new()
+    export_backdrop.name = "ExportOnlyGradientBackdrop"
+    export_backdrop.mesh = quad
+    export_backdrop.material_override = shader_material
+    export_backdrop.position = Vector3(0.0, 0.0, -2.8)
+    export_backdrop.visible = export_mode
+    add_child(export_backdrop)
+
+
+func _setup_audio() -> void:
+    music_player = AudioStreamPlayer.new()
+    music_player.name = "BackgroundMusic"
+    music_player.bus = "Master"
+    add_child(music_player)
+
+    sfx_player = AudioStreamPlayer.new()
+    sfx_player.name = "SparkleSound"
+    sfx_player.volume_db = -5.0
+    sfx_player.stream = _make_sparkle_sound()
+    add_child(sfx_player)
+
+
+func _apply_startup_settings() -> void:
+    var env_speed := OS.get_environment("MAGIC_DESKTOP_SPEED")
+    if not env_speed.is_empty() and env_speed.is_valid_float():
+        rotation_speed_degrees = clampf(float(env_speed), 0.0, 120.0)
+
+    var env_text := OS.get_environment("MAGIC_DESKTOP_TEXT").strip_edges()
+    if not env_text.is_empty():
+        birthday_label.text = env_text.left(32)
+        birthday_shadow.text = birthday_label.text
+
+    var env_volume := OS.get_environment("MAGIC_DESKTOP_MUSIC_VOLUME")
+    if not env_volume.is_empty() and env_volume.is_valid_float():
+        _set_music_volume(float(env_volume))
+
+    var music_path := OS.get_environment("MAGIC_DESKTOP_MUSIC")
+    if not music_path.is_empty():
+        _load_music_file(music_path)
+
+
+func _load_music_file(path: String) -> void:
+    if not FileAccess.file_exists(path):
+        push_warning("Music file does not exist: " + path)
+        return
+
+    var extension := path.get_extension().to_lower()
+    var stream: AudioStream
+
+    match extension:
+        "mp3":
+            var mp3 := AudioStreamMP3.load_from_file(path)
+            if mp3 == null:
+                push_warning("Could not decode MP3: " + path)
+                return
+            mp3.loop = true
+            stream = mp3
+        "ogg":
+            var ogg := AudioStreamOggVorbis.load_from_file(path)
+            if ogg == null:
+                push_warning("Could not decode OGG: " + path)
+                return
+            ogg.loop = true
+            stream = ogg
+        "wav":
+            var wav := AudioStreamWAV.load_from_file(path)
+            if wav == null:
+                push_warning("Could not decode WAV: " + path)
+                return
+            wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+            wav.loop_begin = 0
+            var bytes_per_frame := 4 if wav.stereo else 2
+            wav.loop_end = int(wav.data.size() / bytes_per_frame)
+            stream = wav
+        _:
+            push_warning("Supported music formats are MP3, OGG and WAV.")
+            return
+
+    music_player.stop()
+    music_player.stream = stream
+    music_player.stream_paused = false
+    print("Loaded background music: ", path)
+
+
+func _set_music_volume(value: float) -> void:
+    if not is_instance_valid(music_player):
+        return
+    var volume := clampf(value, 0.0, 1.0)
+    music_player.volume_db = -80.0 if volume <= 0.001 else linear_to_db(volume)
+
+
+func _make_sparkle_sound() -> AudioStreamWAV:
+    const SAMPLE_RATE := 22050
+    const DURATION := 0.62
+    var sample_count := int(SAMPLE_RATE * DURATION)
+    var pcm := PackedByteArray()
+
+    for index in range(sample_count):
+        var time := float(index) / float(SAMPLE_RATE)
+        var envelope := pow(maxf(0.0, 1.0 - time / DURATION), 2.8)
+        var note := sin(TAU * 880.0 * time) * 0.46
+        note += sin(TAU * 1320.0 * time) * 0.30
+        note += sin(TAU * 1760.0 * time) * 0.18
+        note += sin(TAU * 2093.0 * maxf(0.0, time - 0.08)) * 0.08
+        var sample_value := clampf(note * envelope * 0.24, -1.0, 1.0)
+        var sample_int := int(sample_value * 32767.0)
+        pcm.append(sample_int & 0xff)
+        pcm.append((sample_int >> 8) & 0xff)
+
+    var stream := AudioStreamWAV.new()
+    stream.format = AudioStreamWAV.FORMAT_16_BITS
+    stream.mix_rate = SAMPLE_RATE
+    stream.stereo = false
+    stream.data = pcm
+    return stream
+
+
+func _play_sparkle_sound() -> void:
+    if is_instance_valid(sfx_player):
+        sfx_player.stop()
+        sfx_player.play()
+
+
 func _setup_mouse_region() -> void:
     var polygon := PackedVector2Array()
     var center := Vector2(WINDOW_WIDTH * 0.5, WINDOW_HEIGHT * 0.50)
@@ -722,6 +881,8 @@ func _set_passthrough(enabled: bool) -> void:
 
 
 func _center_window() -> void:
+    if export_mode:
+        return
     var screen_size := DisplayServer.screen_get_size()
     var position := Vector2i(
         int((screen_size.x - WINDOW_WIDTH) / 2),
@@ -758,9 +919,27 @@ func _handle_command(command: Dictionary) -> void:
         "set_rotation_speed":
             rotation_speed_degrees = clampf(float(command.get("value", 12.0)), 0.0, 120.0)
         "set_text":
+            var new_text := str(command.get("value", "Happy Birthday")).strip_edges()
+            var display_text := new_text.left(32) if not new_text.is_empty() else "Happy Birthday"
             if is_instance_valid(birthday_label):
-                var new_text := str(command.get("value", "Happy Birthday")).strip_edges()
-                birthday_label.text = new_text.left(32) if not new_text.is_empty() else "Happy Birthday"
+                birthday_label.text = display_text
+            if is_instance_valid(birthday_shadow):
+                birthday_shadow.text = display_text
+        "set_music":
+            _load_music_file(str(command.get("path", "")))
+        "play_music":
+            if is_instance_valid(music_player) and music_player.stream != null:
+                music_player.play()
+        "pause_music":
+            if is_instance_valid(music_player):
+                music_player.stream_paused = true
+        "stop_music":
+            if is_instance_valid(music_player):
+                music_player.stop()
+        "set_music_volume":
+            _set_music_volume(float(command.get("value", 0.55)))
+        "play_sfx":
+            _play_sparkle_sound()
         "burst":
             _trigger_surprise()
         "set_passthrough":
@@ -776,6 +955,7 @@ func _handle_command(command: Dictionary) -> void:
 
 
 func _trigger_surprise() -> void:
+    _play_sparkle_sound()
     if is_instance_valid(burst_particles):
         burst_particles.restart()
 
@@ -795,7 +975,7 @@ func _trigger_surprise() -> void:
 
 
 func _input(event: InputEvent) -> void:
-    if passthrough_enabled:
+    if export_mode or passthrough_enabled:
         return
 
     if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
