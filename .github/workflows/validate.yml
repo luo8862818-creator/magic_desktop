@@ -25,14 +25,14 @@ jobs:
       - name: Validate JSON settings
         run: python -m json.tool config/settings.json
 
-      - name: Download Godot console runtime
+      - name: Download Godot Windows runtime
         shell: pwsh
         run: |
           $url = "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_win64.exe.zip"
           Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\godot.zip"
           Expand-Archive -Path "$env:RUNNER_TEMP\godot.zip" -DestinationPath "$env:RUNNER_TEMP\godot" -Force
           $godot = Get-ChildItem "$env:RUNNER_TEMP\godot" -Recurse -Filter "Godot*.exe" | Select-Object -First 1
-          if (-not $godot) { throw "Godot console executable was not found in the release archive." }
+          if (-not $godot) { throw "Godot executable was not found in the release archive." }
           "GODOT_EXE=$($godot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Parse and load Godot project
