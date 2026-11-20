@@ -6,6 +6,7 @@ const WINDOW_HEIGHT := 630
 
 var udp := PacketPeerUDP.new()
 var export_mode := false
+var cake_platform: Node3D
 var cake_root: Node3D
 var mascot_root: Node3D
 var birthday_label: Label3D
@@ -78,14 +79,17 @@ func _process(delta: float) -> void:
 
 
 func _animate_scene(time: float, delta: float) -> void:
-    var intro := smoothstep(0.0, 2.0, time)
-    var focus := smoothstep(5.0, 8.0, time)
-    var reveal := smoothstep(8.0, 10.8, time)
+    var intro := smoothstep(0.0, 1.6, time)
+    var platform_lift := smoothstep(4.25, 7.15, time)
+    var focus := smoothstep(5.0, 7.8, time)
+    var reveal := smoothstep(8.15, 10.65, time)
     birthday_label.modulate.a = reveal
     birthday_label.position.y = 2.14 + reveal * 0.15
     softbox.light_energy = 0.17 + 0.37 * intro + 0.16 * focus
     warm_rim.light_energy = 0.22 + 0.66 * focus
     backdrop_material.set_shader_parameter("arrival", intro)
+    # The porcelain stand and its companions travel with the stage lift.
+    cake_platform.position.y = lerpf(-5.2, 0.0, platform_lift)
     cake_root.rotate_y(deg_to_rad(rotation_speed_degrees) * delta)
     mascot_root.rotation.x = 0.03 * sin(time * 1.5)
     mascot_root.rotation.y = -0.24 + 0.06 * sin(time * 0.92)
@@ -107,7 +111,7 @@ func _animate_scene(time: float, delta: float) -> void:
         star.rotation.z = phase + drift * 0.15
         star.scale = Vector3.ONE * maxf(0.0001, intro * star_sizes[index] * twinkle)
 
-    var ribbon_time := maxf(0.0, time - 2.0)
+    var ribbon_time := maxf(0.0, time - 3.0)
     var motion := smoothstep(0.0, 2.0, ribbon_time)
     for index in range(streamers.size()):
         var phase := float(index) * 1.6
@@ -117,9 +121,12 @@ func _animate_scene(time: float, delta: float) -> void:
     for index in range(balloon_nodes.size()):
         var balloon := balloon_nodes[index]
         var phase := balloon_phases[index]
-        var lift := smoothstep(2.0 + phase, 8.6 + phase * 1.55, time)
-        balloon.position.y = lerpf(-5.0, 0.05 + floorf(float(index) * 0.5) * 0.57, lift)
-        balloon.position.x = balloon_base_x[index] + 0.14 * lift * sin(time * (0.67 + phase * 0.12) + phase)
+        var lift := smoothstep(0.35 + phase, 4.45 + phase * 0.78, time)
+        var spread := smoothstep(1.5 + phase * 0.20, 4.8 + phase * 0.24, time)
+        var height := 0.25 + floorf(float(index) * 0.5) * 0.51
+        balloon.position.y = lerpf(-4.1, height, lift)
+        balloon.position.x = balloon_base_x[index] * lerpf(0.61, 1.0, spread)
+        balloon.position.x += 0.14 * lift * sin(time * (0.67 + phase * 0.12) + phase)
         balloon.rotation.z = 0.16 * lift * sin(time * 0.81 + phase * 2.0)
         balloon.rotation.y = 0.28 * lift * sin(time * 0.61 + float(index))
 
@@ -139,6 +146,10 @@ func _setup_environment() -> void:
 
 
 func _build_scene() -> void:
+    cake_platform = Node3D.new()
+    cake_platform.name = "CakePlatform"
+    add_child(cake_platform)
+
     var chocolate := _make_material(Color("#eaa0b5"), 0.04, 0.30)
     var dark_chocolate := _make_material(Color("#c96d8a"), 0.06, 0.28)
     var ganache := _make_material(Color("#f4a9bf"), 0.10, 0.22)
@@ -168,7 +179,7 @@ func _build_scene() -> void:
     cake_root = Node3D.new()
     cake_root.name = "HeroCake"
     cake_root.scale = Vector3.ONE * 1.12
-    add_child(cake_root)
+    cake_platform.add_child(cake_root)
 
     # Porcelain stand: a raised foot, broad plate and fine metallic rim.
     _add_cylinder(cake_root, "StandFoot", 0.60, 0.68, 0.13, -0.73, plate_material)
@@ -460,7 +471,7 @@ func _add_mascot_bear() -> void:
     mascot_root = Node3D.new()
     mascot_root.name = "CuteTeddyMascot"
     mascot_root.position = Vector3(1.97, -0.89, 0.33)
-    add_child(mascot_root)
+    cake_platform.add_child(mascot_root)
 
     var fur := _make_material(Color("#c98d62"), 0.0, 0.62)
     var muzzle := _make_material(Color("#fff0d9"), 0.0, 0.52)
@@ -545,7 +556,7 @@ func _add_gift_box() -> void:
     var gift_root := Node3D.new()
     gift_root.name = "TinyBirthdayGift"
     gift_root.position = Vector3(-1.95, -0.89, 0.47)
-    add_child(gift_root)
+    cake_platform.add_child(gift_root)
 
     var gift_pink := _make_material(Color("#f28eb0"), 0.08, 0.30)
     var ribbon_gold := _make_material(Color("#f6c56e"), 0.55, 0.22)
@@ -917,9 +928,9 @@ func _add_balloons() -> void:
 func _add_stage() -> void:
     var brass := _make_material(Color("#bf8750"), 0.56, 0.29, Color("#b98347"), 0.18)
     var velvet := _make_material(Color("#34223e"), 0.12, 0.59)
-    _add_cylinder(self, "VelvetDais", 2.48, 2.55, 0.17, -0.98, velvet)
-    _add_torus(self, "DaisBrassInlay", 2.45, 2.49, 0.024, -0.907, brass)
-    _add_torus(self, "DaisLowerInlay", 2.49, 2.54, 0.019, -1.016, brass)
+    _add_cylinder(cake_platform, "VelvetDais", 2.48, 2.55, 0.17, -0.98, velvet)
+    _add_torus(cake_platform, "DaisBrassInlay", 2.45, 2.49, 0.024, -0.907, brass)
+    _add_torus(cake_platform, "DaisLowerInlay", 2.49, 2.54, 0.019, -1.016, brass)
 
     var crystal := ShaderMaterial.new()
     var shader := Shader.new()
