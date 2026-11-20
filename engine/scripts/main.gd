@@ -59,8 +59,9 @@ func _ready() -> void:
         _setup_ipc()
         _center_window()
     else:
-        # Background music is muxed by FFmpeg after rendering so the video
-        # always contains the selected track, independent of Godot audio capture.
+        # Movie Maker writes the scene audio to frame.wav beside the PNG sequence.
+        if music_player.stream != null:
+            music_player.play()
         get_tree().create_timer(0.75).timeout.connect(_trigger_surprise)
 
     print("Magic Desktop premium 3D scene is ready. Export mode: ", export_mode)
