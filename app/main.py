@@ -99,6 +99,14 @@ def load_settings() -> dict[str, Any]:
         loaded = json.loads(source_file.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
             defaults.update(loaded)
+            # Migrate the old 24°/s starter value to a calmer default once.
+            if (
+                int(defaults.get("rotation_speed", 8)) == 24
+                and loaded.get("rotation_speed_profile") != "slow-v2"
+            ):
+                defaults["rotation_speed"] = 8
+                defaults["rotation_speed_profile"] = "slow-v2"
+                save_settings(defaults)
     except (OSError, json.JSONDecodeError) as exc:
         logging.exception("Failed to read settings: %s", exc)
     return defaults
@@ -670,6 +678,20 @@ class MagicDesktopWindow(QMainWindow):
             QPushButton#secondaryButton { background: #29384f; color: #e0eafa; }
             QPushButton#secondaryButton:hover { background: #354967; }
             QPushButton#secondaryButton:checked { background: #8a602d; color: #fff1d8; }
+            QComboBox {
+                background: #0e1521;
+                color: #e9eef8;
+                border: 1px solid #354660;
+                border-radius: 8px;
+                padding: 5px 10px;
+                min-width: 100px;
+            }
+            QComboBox QAbstractItemView {
+                background: #172131;
+                color: #e9eef8;
+                selection-background-color: #347edb;
+                border: 1px solid #354660;
+            }
             QSlider::groove:horizontal {
                 height: 6px; background: #2d3b50; border-radius: 3px;
             }
