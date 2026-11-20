@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtGui import QCloseEvent, QFont
 from PySide6.QtWidgets import (
     QApplication,
@@ -85,6 +85,8 @@ def load_settings() -> dict[str, Any]:
         "birthday_text": "Happy Birthday",
         "window_width": 820,
         "window_height": 720,
+        "music_file": "",
+        "music_volume": 0.55,
     }
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     source_file = CONFIG_FILE if CONFIG_FILE.exists() else DEFAULT_CONFIG_FILE
@@ -108,6 +110,138 @@ def save_settings(settings: dict[str, Any]) -> None:
     )
 
 
+class ExportWorker(QThread):
+    progress = Signal(str)
+    result_ready = Signal(bool, str)
+
+    def __init__(
+        self,
+        godot_exe: Path,
+        engine_dir: Path,
+        output_path: Path,
+        export_format: str,
+        music_file: str,
+        music_volume: float,
+        birthday_text: str,
+        rotation_speed: int,
+    ) -> None:
+        super().__init__()
+        self.godot_exe = godot_exe
+        self.engine_dir = engine_dir
+        self.output_path = output_path
+        self.export_format = export_format
+        self.music_file = music_file
+        self.music_volume = music_volume
+        self.birthday_text = birthday_text
+        self.rotation_speed = rotation_speed
+
+    def run(self) -> None:
+        temp_video = self.output_path.with_name(
+            f".{self.output_path.stem}_render_tmp.avi"
+        )
+        try:
+            self.output_path.parent.mkdir(parents=True, exist_ok=True)
+            if temp_video.exists():
+                temp_video.unlink()
+
+            env = os.environ.copy()
+            env["MAGIC_DESKTOP_EXPORT"] = "1"
+            env["MAGIC_DESKTOP_MUSIC"] = self.music_file
+            env["MAGIC_DESKTOP_MUSIC_VOLUME"] = str(self.music_volume)
+            env["MAGIC_DESKTOP_TEXT"] = self.birthday_text
+            env["MAGIC_DESKTOP_SPEED"] = str(self.rotation_speed)
+
+            self.progress.emit("正在渲染 8 秒 3D 动画，请稍候...")
+            render_command = [
+                str(self.godot_exe),
+                "--path", str(self.engine_dir),
+                "--write-movie", str(temp_video),
+                "--fixed-fps", "30",
+                "--quit-after", "240",
+                "--resolution", "1280x720",
+            ]
+            render_result = subprocess.run(
+                render_command,
+                cwd=str(self.engine_dir),
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=1800,
+            )
+            if render_result.returncode != 0:
+                details = (render_result.stderr or render_result.stdout or "")[-5000:]
+                raise RuntimeError(
+                    "Godot 视频渲染失败。\n"
+                    f"退出代码：{render_result.returncode}\n{details}"
+                )
+            if not temp_video.is_file() or temp_video.stat().st_size == 0:
+                raise RuntimeError(
+                    "Godot 没有生成 AVI 临时视频。请检查 Godot 版本和 logs/godot.log。"
+                )
+
+            self.progress.emit("3D 渲染完成，正在编码最终文件...")
+            import imageio_ffmpeg
+
+            ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+            if self.export_format == "mp4":
+                encode_command = [
+                    ffmpeg_exe, "-y",
+                    "-i", str(temp_video),
+                    "-map", "0:v:0",
+                    "-map", "0:a?",
+                    "-c:v", "libx264",
+                    "-preset", "medium",
+                    "-crf", "18",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-b:a", "192k",
+                    "-movflags", "+faststart",
+                    str(self.output_path),
+                ]
+            else:
+                gif_filter = (
+                    "fps=15,scale=720:-1:flags=lanczos,"
+                    "split[s0][s1];"
+                    "[s0]palettegen=stats_mode=diff[p];"
+                    "[s1][p]paletteuse=dither=bayer"
+                )
+                encode_command = [
+                    ffmpeg_exe, "-y",
+                    "-i", str(temp_video),
+                    "-map", "0:v:0",
+                    "-an",
+                    "-filter_complex", gif_filter,
+                    "-loop", "0",
+                    str(self.output_path),
+                ]
+
+            encode_result = subprocess.run(
+                encode_command,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=900,
+            )
+            if encode_result.returncode != 0:
+                details = (encode_result.stderr or encode_result.stdout or "")[-5000:]
+                raise RuntimeError(f"FFmpeg 编码失败。\n{details}")
+            if not self.output_path.is_file() or self.output_path.stat().st_size == 0:
+                raise RuntimeError("编码结束，但没有生成有效的导出文件。")
+
+            self.result_ready.emit(True, str(self.output_path))
+        except Exception as exc:
+            self.result_ready.emit(False, str(exc))
+        finally:
+            try:
+                if temp_video.exists():
+                    temp_video.unlink()
+            except OSError:
+                pass
+
+
 class MagicDesktopWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -115,6 +249,8 @@ class MagicDesktopWindow(QMainWindow):
         self.detected_godot = find_godot_executable(str(self.settings.get("godot_exe", "")))
         self.godot_process: subprocess.Popen[bytes] | None = None
         self.godot_log_handle: Any = None
+        self.export_worker: ExportWorker | None = None
+        self.music_playing = False
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.passthrough_enabled = False
 
@@ -269,6 +405,103 @@ class MagicDesktopWindow(QMainWindow):
         self._rotation_speed_changed(self.speed_slider.value())
         root.addWidget(controls_card)
 
+        audio_card = QFrame()
+        audio_card.setObjectName("card")
+        audio_layout = QVBoxLayout(audio_card)
+        audio_layout.setContentsMargins(17, 15, 17, 16)
+        audio_layout.setSpacing(10)
+        audio_caption = QLabel("MUSIC & SOUND")
+        audio_caption.setObjectName("sectionCaption")
+        audio_layout.addWidget(audio_caption)
+
+        music_file_row = QHBoxLayout()
+        music_file_row.setSpacing(10)
+        self.music_path_label = QLabel("未选择背景音乐")
+        self.music_path_label.setObjectName("fileLabel")
+        self.music_path_label.setWordWrap(True)
+        self.music_path_label.setMinimumHeight(34)
+        self.music_path_label.setText(
+            Path(str(self.settings.get("music_file", ""))).name
+            if self.settings.get("music_file")
+            else "未选择背景音乐（支持 MP3 / OGG / WAV）"
+        )
+        choose_music_button = QPushButton("选择音乐")
+        choose_music_button.setObjectName("secondaryButton")
+        choose_music_button.setMinimumWidth(104)
+        choose_music_button.setMinimumHeight(42)
+        choose_music_button.clicked.connect(self._choose_music)
+        music_file_row.addWidget(self.music_path_label, 1)
+        music_file_row.addWidget(choose_music_button)
+        audio_layout.addLayout(music_file_row)
+
+        music_buttons = QHBoxLayout()
+        music_buttons.setSpacing(10)
+        play_music_button = QPushButton("播放音乐")
+        play_music_button.setObjectName("secondaryButton")
+        play_music_button.setMinimumHeight(42)
+        play_music_button.clicked.connect(self._play_music)
+        stop_music_button = QPushButton("停止音乐")
+        stop_music_button.setObjectName("secondaryButton")
+        stop_music_button.setMinimumHeight(42)
+        stop_music_button.clicked.connect(self._stop_music)
+        music_buttons.addWidget(play_music_button, 1)
+        music_buttons.addWidget(stop_music_button, 1)
+        audio_layout.addLayout(music_buttons)
+
+        volume_header = QHBoxLayout()
+        volume_label = QLabel("背景音乐音量")
+        volume_label.setObjectName("fieldLabel")
+        self.music_volume_value = QLabel()
+        self.music_volume_value.setObjectName("valueLabel")
+        volume_header.addWidget(volume_label)
+        volume_header.addStretch(1)
+        volume_header.addWidget(self.music_volume_value)
+        audio_layout.addLayout(volume_header)
+
+        self.music_volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.music_volume_slider.setRange(0, 100)
+        self.music_volume_slider.setValue(
+            int(float(self.settings.get("music_volume", 0.55)) * 100)
+        )
+        self.music_volume_slider.setMinimumHeight(24)
+        self.music_volume_slider.valueChanged.connect(self._music_volume_changed)
+        audio_layout.addWidget(self.music_volume_slider)
+        self._music_volume_changed(self.music_volume_slider.value())
+        root.addWidget(audio_card)
+
+        export_card = QFrame()
+        export_card.setObjectName("card")
+        export_layout = QVBoxLayout(export_card)
+        export_layout.setContentsMargins(17, 15, 17, 16)
+        export_layout.setSpacing(10)
+        export_caption = QLabel("VIDEO EXPORT")
+        export_caption.setObjectName("sectionCaption")
+        export_layout.addWidget(export_caption)
+
+        export_hint = QLabel("1280 × 720  ·  30 FPS  ·  8 秒动画")
+        export_hint.setObjectName("fieldLabel")
+        export_layout.addWidget(export_hint)
+
+        export_buttons = QHBoxLayout()
+        export_buttons.setSpacing(10)
+        self.export_mp4_button = QPushButton("导出 MP4")
+        self.export_mp4_button.setObjectName("primaryButton")
+        self.export_mp4_button.setMinimumHeight(46)
+        self.export_mp4_button.clicked.connect(lambda: self._start_export("mp4"))
+        self.export_gif_button = QPushButton("导出 GIF")
+        self.export_gif_button.setObjectName("secondaryButton")
+        self.export_gif_button.setMinimumHeight(46)
+        self.export_gif_button.clicked.connect(lambda: self._start_export("gif"))
+        export_buttons.addWidget(self.export_mp4_button, 1)
+        export_buttons.addWidget(self.export_gif_button, 1)
+        export_layout.addLayout(export_buttons)
+
+        export_note = QLabel("MP4 可包含背景音乐；GIF 为无声动画。首次导出会调用 Godot 渲染并由 FFmpeg 编码。")
+        export_note.setObjectName("footer")
+        export_note.setWordWrap(True)
+        export_layout.addWidget(export_note)
+        root.addWidget(export_card)
+
         actions_card = QFrame()
         actions_card.setObjectName("card")
         actions = QVBoxLayout(actions_card)
@@ -354,6 +587,7 @@ class MagicDesktopWindow(QMainWindow):
             QLabel#fieldLabel { color: #c3cede; font-size: 12px; font-weight: 600; }
             QLabel#status { color: #d5e2f4; font-size: 13px; }
             QLabel#valueLabel { color: #9cc9ff; font-size: 12px; font-weight: 800; }
+            QLabel#fileLabel { color: #aebbd0; font-size: 12px; }
             QLabel#footer { color: #8492a8; font-size: 11px; }
             QLineEdit {
                 background: #0e1521;
@@ -409,6 +643,126 @@ class MagicDesktopWindow(QMainWindow):
         self.status_label.setStyleSheet(f"color: {color};")
         self.status_label.setText(message)
 
+    def _choose_music(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择背景音乐",
+            str(Path.home()),
+            "Audio files (*.mp3 *.ogg *.wav);;All files (*.*)",
+        )
+        if not path:
+            return
+
+        self.settings["music_file"] = path
+        save_settings(self.settings)
+        self.music_path_label.setText(Path(path).name)
+        if self.godot_process and self.godot_process.poll() is None:
+            self._send_command({"action": "set_music", "path": path})
+        self._set_status("背景音乐已选择。点击“播放音乐”试听。", "success")
+
+    def _play_music(self) -> None:
+        path = str(self.settings.get("music_file", "")).strip()
+        if not path or not Path(path).is_file():
+            QMessageBox.information(self, "尚未选择音乐", "请先选择 MP3、OGG 或 WAV 音频文件。")
+            return
+        if not self.godot_process or self.godot_process.poll() is not None:
+            QMessageBox.information(self, "3D 引擎未启动", "请先启动桌面动画，再播放背景音乐。")
+            return
+        self._send_command({"action": "set_music", "path": path})
+        self._send_command({
+            "action": "set_music_volume",
+            "value": self.music_volume_slider.value() / 100.0,
+        })
+        self._send_command({"action": "play_music"})
+        self.music_playing = True
+        self._set_status("背景音乐正在播放。", "success")
+
+    def _stop_music(self) -> None:
+        self._send_command({"action": "stop_music"})
+        self.music_playing = False
+        self._set_status("背景音乐已停止。", "muted")
+
+    def _music_volume_changed(self, value: int) -> None:
+        self.music_volume_value.setText(f"{value}%")
+        volume = value / 100.0
+        self.settings["music_volume"] = volume
+        save_settings(self.settings)
+        if self.godot_process and self.godot_process.poll() is None:
+            self._send_command({"action": "set_music_volume", "value": volume})
+
+    def _start_export(self, export_format: str) -> None:
+        if self.export_worker and self.export_worker.isRunning():
+            QMessageBox.information(self, "正在导出", "当前导出任务完成后才能开始下一次导出。")
+            return
+
+        godot_exe = find_godot_executable(self.godot_path_input.text())
+        if not godot_exe:
+            QMessageBox.warning(
+                self,
+                "未找到 Godot",
+                f"请确认 Godot 4.x GUI 版 exe 位于：\n{GODOT_DIR}",
+            )
+            return
+
+        default_name = "MagicDesktop_Animation.mp4" if export_format == "mp4" else "MagicDesktop_Animation.gif"
+        file_filter = "MP4 video (*.mp4)" if export_format == "mp4" else "GIF animation (*.gif)"
+        output, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出桌面动画",
+            str(ROOT_DIR / "output" / default_name),
+            file_filter,
+        )
+        if not output:
+            return
+
+        output_path = Path(output)
+        expected_suffix = f".{export_format}"
+        if output_path.suffix.lower() != expected_suffix:
+            output_path = output_path.with_suffix(expected_suffix)
+
+        try:
+            import imageio_ffmpeg  # noqa: F401
+        except ImportError:
+            QMessageBox.critical(
+                self,
+                "缺少视频编码组件",
+                "请在项目目录执行 setup.bat，安装 imageio-ffmpeg 后再导出。",
+            )
+            return
+
+        self.export_worker = ExportWorker(
+            godot_exe=godot_exe,
+            engine_dir=ENGINE_DIR,
+            output_path=output_path,
+            export_format=export_format,
+            music_file=str(self.settings.get("music_file", "")),
+            music_volume=float(self.music_volume_slider.value() / 100.0),
+            birthday_text=self.text_input.text().strip() or "Happy Birthday",
+            rotation_speed=self.speed_slider.value(),
+        )
+        self.export_worker.progress.connect(
+            lambda message: self._set_status(message, "warning")
+        )
+        self.export_worker.result_ready.connect(self._on_export_result)
+        self.export_worker.finished.connect(self._clear_export_worker)
+        self.export_mp4_button.setEnabled(False)
+        self.export_gif_button.setEnabled(False)
+        self._set_status("正在准备导出任务...", "warning")
+        self.export_worker.start()
+
+    def _on_export_result(self, success: bool, message: str) -> None:
+        if success:
+            self._set_status(f"导出完成：{message}", "success")
+            QMessageBox.information(self, "导出完成", f"文件已生成：\n{message}")
+        else:
+            self._set_status("导出失败，请查看错误信息。", "error")
+            QMessageBox.critical(self, "导出失败", message)
+
+    def _clear_export_worker(self) -> None:
+        self.export_mp4_button.setEnabled(True)
+        self.export_gif_button.setEnabled(True)
+        self.export_worker = None
+
     def _choose_godot(self) -> None:
         current = self.godot_path_input.text().strip()
         start_dir = str(Path(current).parent) if current else str(Path.home())
@@ -457,6 +811,10 @@ class MagicDesktopWindow(QMainWindow):
             self.godot_log_handle = LOG_FILE.with_name("godot.log").open("a", encoding="utf-8")
             env = os.environ.copy()
             env["MAGIC_DESKTOP_PORT"] = str(IPC_PORT)
+            env["MAGIC_DESKTOP_MUSIC"] = str(self.settings.get("music_file", ""))
+            env["MAGIC_DESKTOP_MUSIC_VOLUME"] = str(self.settings.get("music_volume", 0.55))
+            env["MAGIC_DESKTOP_TEXT"] = self.text_input.text().strip() or "Happy Birthday"
+            env["MAGIC_DESKTOP_SPEED"] = str(self.speed_slider.value())
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
             self.godot_process = subprocess.Popen(
                 [str(godot_exe), "--path", str(ENGINE_DIR)],
@@ -492,6 +850,13 @@ class MagicDesktopWindow(QMainWindow):
                 "value": self.text_input.text().strip() or "Happy Birthday",
             }
         )
+        self._send_command({
+            "action": "set_music_volume",
+            "value": self.music_volume_slider.value() / 100.0,
+        })
+        music_file = str(self.settings.get("music_file", "")).strip()
+        if music_file and Path(music_file).is_file():
+            self._send_command({"action": "set_music", "path": music_file})
         self._set_status("3D 桌面动画运行中。", "success")
 
     def _send_command(self, payload: dict[str, Any]) -> None:
@@ -581,6 +946,15 @@ class MagicDesktopWindow(QMainWindow):
             self.godot_log_handle = None
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self.export_worker and self.export_worker.isRunning():
+            QMessageBox.warning(
+                self,
+                "视频正在导出",
+                "请等待当前 MP4/GIF 导出完成后再关闭控制中心。",
+            )
+            event.ignore()
+            return
+
         process = self.godot_process
         if process and process.poll() is None:
             try:
