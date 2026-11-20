@@ -12,7 +12,7 @@ Windows 桌面 3D 悬浮动画原型。当前版本完成第一阶段：Python �
 - 鼠标拖动窗口。
 - 鼠标穿透开关：开启后鼠标操作会传递给桌面下方窗口。
 - 自定义祝福文字、旋转速度。
-- Godot 路径由控制中心首次运行时选择并保存。
+- 自动检测 `tools/godot/` 目录中的 Godot 4 Windows GUI 可执行文件；也保留手动选择路径作为备用。
 - Python 与 Godot 通过本机 UDP（127.0.0.1）通信。
 
 ## 当前版本尚未实现
@@ -23,7 +23,7 @@ Windows 桌面 3D 悬浮动画原型。当前版本完成第一阶段：Python �
 
 - Windows 10/11（建议 64 位）。
 - Python 3.11 或更高版本。
-- Godot Engine 4.4 或更高版本，下载 Standard 版本（不是 .NET 版本也可以）。
+- Godot Engine 4.4 或更高版本的 Standard Windows 64-bit 版本。只需下载并解压，不需要安装。
 - 支持桌面透明窗口的显卡驱动。透明效果可用性会受到显卡驱动和 Windows 桌面合成环境影响。
 
 Godot 官方下载：https://godotengine.org/download/windows/
@@ -31,14 +31,16 @@ Godot 官方下载：https://godotengine.org/download/windows/
 ## 第一次运行
 
 1. 下载或克隆仓库。
-2. 安装 Python 3.11+ 和 Godot 4.4+。
-3. 双击 `setup.bat`，创建虚拟环境并安装 PySide6。
-4. 双击 `start.bat`，打开 Magic Desktop 控制中心。
-5. 在控制中心点击“选择 Godot.exe”，选择 Godot 安装目录中的 Godot 可执行文件。
-6. 点击“启动桌面动画”。
+2. 安装 Python 3.11+。
+3. 从 Godot 官网下载 Godot 4.4+ Standard Windows 64-bit 压缩包并解压。
+4. 将解压得到的 GUI 版文件（名称类似 `Godot_v4.5-stable_win64.exe`）放入项目的 `tools/godot/` 目录。不要只放 console 版本。
+5. 双击 `setup.bat`，创建虚拟环境并安装 PySide6。
+6. 双击 `start.bat`，打开 Magic Desktop 控制中心。
+7. 程序会自动识别 `tools/godot/` 中唯一的 GUI 版 Godot exe，点击“启动桌面动画”即可。若放入多个版本，或自动识别失败，可点击“选择...”手动指定。
 
-Godot 可执行文件通常类似：
-`C:\\Godot\\Godot_v4.4-stable_win64.exe`
+Godot 下载地址：https://godotengine.org/download/windows/
+
+**说明：** 当前阶段放入的是 Godot 编辑器发行版 exe，程序通过它运行项目；这不是最终交付时的独立导出运行程序。最终发布版会再改为内置 Godot 导出运行时。
 
 ## 控制方式
 
@@ -69,6 +71,8 @@ magic_desktop/
 │   │   └── main.tscn
 │   └── scripts/
 │       └── main.gd
+├── tools/
+│   └── godot/             # 将下载的 Godot Windows GUI exe 放在这里（本地文件，不上传）
 ├── logs/                 # 运行时生成，不上传
 ├── output/               # 后续导出目录，不上传
 ├── requirements.txt
@@ -81,7 +85,7 @@ magic_desktop/
 
 ### 1. 提示找不到 Godot
 
-在控制中心点击“选择 Godot.exe”，重新选择 Godot 4 的可执行文件。路径会保存在 `config/settings.local.json`（该文件已加入 Git 忽略规则，不会上传）。
+确认已将 Godot 4 Windows GUI 版 exe 放入 `tools/godot/`，文件名以 `Godot` 开头且扩展名为 `.exe`。如果目录中有多个版本，请在控制中心点击“选择...”手动指定。手动选择的路径会保存在 `config/settings.local.json`（该文件已加入 Git 忽略规则，不会上传）。
 
 ### 2. 窗口有黑色背景，不透明
 
