@@ -28,7 +28,8 @@ from PySide6.QtWidgets import (
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 ENGINE_DIR = ROOT_DIR / "engine"
-CONFIG_FILE = ROOT_DIR / "config" / "settings.json"
+DEFAULT_CONFIG_FILE = ROOT_DIR / "config" / "settings.json"
+CONFIG_FILE = ROOT_DIR / "config" / "settings.local.json"
 LOG_DIR = ROOT_DIR / "logs"
 LOG_FILE = LOG_DIR / "app.log"
 IPC_HOST = "127.0.0.1"
@@ -56,11 +57,12 @@ def load_settings() -> dict[str, Any]:
         "window_height": 520,
     }
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    if not CONFIG_FILE.exists():
+    source_file = CONFIG_FILE if CONFIG_FILE.exists() else DEFAULT_CONFIG_FILE
+    if not source_file.exists():
         save_settings(defaults)
         return defaults
     try:
-        loaded = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        loaded = json.loads(source_file.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
             defaults.update(loaded)
     except (OSError, json.JSONDecodeError) as exc:
