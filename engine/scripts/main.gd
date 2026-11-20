@@ -28,6 +28,7 @@ var drag_mouse_origin := Vector2i.ZERO
 var drag_window_origin := Vector2i.ZERO
 var rng := RandomNumberGenerator.new()
 var halo_ring: MeshInstance3D
+var cloche_light: OmniLight3D
 var balloon_nodes: Array[Node3D] = []
 var balloon_base_x: Array[float] = []
 var balloon_phases: Array[float] = []
@@ -69,6 +70,19 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
     flame_clock += delta
+
+    var title_alpha := smoothstep(0.65, 2.65, flame_clock)
+    if is_instance_valid(birthday_label):
+        var title_color := birthday_label.modulate
+        title_color.a = title_alpha
+        birthday_label.modulate = title_color
+    if is_instance_valid(birthday_shadow):
+        var shadow_color := birthday_shadow.modulate
+        shadow_color.a = title_alpha * 0.58
+        birthday_shadow.modulate = shadow_color
+
+    if is_instance_valid(cloche_light):
+        cloche_light.light_energy = 0.12 + sin(flame_clock * 1.15) * 0.035
 
     if is_instance_valid(cake_root):
         cake_root.rotate_y(deg_to_rad(rotation_speed_degrees) * delta)
@@ -939,10 +953,9 @@ func _add_balloons() -> void:
         knot.scale = Vector3(0.72, 0.8, 0.72)
 
         var string_material := _make_material(
-            Color("#f4e9e6"), 0.0, 0.52, Color("#fff4ec"), 0.025
+            Color(0.96, 0.91, 0.87, 0.58), 0.0, 0.52, Color("#fff4ec"), 0.025
         )
         string_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-        string_material.albedo_color.a = 0.58
 
         var string_mesh := CylinderMesh.new()
         string_mesh.top_radius = 0.003
@@ -1051,6 +1064,14 @@ void fragment() {
         Color("#8edcf2"), 0.48, 0.22, Color("#83dfff"), 0.22
     )
     _add_torus(self, "ClocheInnerLightLine", 1.685, 1.70, 0.012, -0.625, inner_glow)
+
+    cloche_light = OmniLight3D.new()
+    cloche_light.name = "ClocheSoftCyanGlow"
+    cloche_light.position = Vector3(0.0, 0.28, -0.25)
+    cloche_light.light_color = Color("#9be7f3")
+    cloche_light.light_energy = 0.12
+    cloche_light.omni_range = 3.8
+    add_child(cloche_light)
 
 
 func _add_export_backdrop() -> void:
