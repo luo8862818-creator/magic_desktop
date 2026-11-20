@@ -605,7 +605,7 @@ class MagicDesktopWindow(QMainWindow):
 
         row_two = QHBoxLayout()
         row_two.setSpacing(10)
-        burst_button = QPushButton("触发惊喜特效")
+        burst_button = QPushButton("泰迪互动")
         burst_button.setObjectName("secondaryButton")
         burst_button.setMinimumHeight(46)
         burst_button.clicked.connect(lambda: self._send_command({"action": "burst"}))
@@ -620,7 +620,7 @@ class MagicDesktopWindow(QMainWindow):
         root.addWidget(actions_card)
 
         footer = QLabel(
-            "交互提示  ·  蛋糕会自动缓慢旋转；点击触发彩色星光，按住拖动可移动悬浮窗口。\n"
+            "交互提示  ·  蛋糕自动缓慢旋转；点击时泰迪轻轻回应，不产生爆闪粒子；按住拖动可移动窗口。\n"
             "开启鼠标穿透后，鼠标操作将直接传递给桌面下方的应用。"
         )
         footer.setObjectName("footer")
