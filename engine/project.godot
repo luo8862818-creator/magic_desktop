@@ -11,10 +11,12 @@ config/features=PackedStringArray("4.4", "GL Compatibility")
 
 [display]
 
-window/size/viewport_width=1280
-window/size/viewport_height=720
+window/size/viewport_width=1920
+window/size/viewport_height=1080
 window/size/window_width_override=1120
 window/size/window_height_override=630
+window/stretch/mode="viewport"
+window/stretch/aspect="keep"
 window/size/borderless=true
 window/size/always_on_top=true
 window/per_pixel_transparency/allowed=true
