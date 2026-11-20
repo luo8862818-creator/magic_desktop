@@ -66,3 +66,7 @@ tools/ffmpeg/bin/
 
 # Local machine settings
 config/settings.local.json
+
+# Local Godot editor executable (download separately; do not commit binaries)
+tools/godot/*.exe
+tools/godot/*.zip
