@@ -4,6 +4,12 @@ const DEFAULT_PORT := 49261
 const WINDOW_WIDTH := 1120
 const WINDOW_HEIGHT := 630
 const BALLOON_WAVE_END := 5.90
+const COUNTDOWN_END := 2.85
+const CAKE_ENTRANCE := 6.45
+const CLOCHE_RADIUS := 1.82
+const CLOCHE_HEIGHT := 3.05
+const CLOCHE_BASE_Y := -0.88
+const CLOCHE_CURVE := 0.76
 const BALLOON_LANES := 10
 const BALLOON_COUNT := 30
 
@@ -39,6 +45,8 @@ var balloon_base_x: Array[float] = []
 var balloon_flights: Array[Vector2] = []
 var cloche_ornaments: Array[MeshInstance3D] = []
 var ornament_positions: Array[Vector3] = []
+var countdown_numbers: Array[Node3D] = []
+var countdown_flames: Array[MeshInstance3D] = []
 
 
 func _ready() -> void:
@@ -85,18 +93,18 @@ func _process(delta: float) -> void:
 
 func _animate_scene(time: float, delta: float) -> void:
     var intro := smoothstep(0.0, 1.6, time)
-    var platform_lift := smoothstep(BALLOON_WAVE_END, 8.10, time)
-    var focus := smoothstep(6.65, 8.25, time)
-    var reveal := smoothstep(8.55, 10.45, time)
+    var platform_lift := smoothstep(CAKE_ENTRANCE, 8.55, time)
+    var focus := smoothstep(7.0, 8.7, time)
+    var reveal := smoothstep(8.85, 10.60, time)
     birthday_label.modulate.a = reveal
     birthday_label.position.y = 2.81 + reveal * 0.13
     softbox.light_energy = 0.17 + 0.37 * intro + 0.16 * focus
     warm_rim.light_energy = 0.22 + 0.66 * focus
     backdrop_material.set_shader_parameter("arrival", intro)
     # The porcelain stand and its companions travel with the stage lift.
-    cake_platform.visible = time >= BALLOON_WAVE_END
+    cake_platform.visible = time >= CAKE_ENTRANCE
     cake_platform.position.y = lerpf(-8.5, 0.0, platform_lift)
-    var turn_delta := clampf(time - BALLOON_WAVE_END, 0.0, delta)
+    var turn_delta := clampf(time - CAKE_ENTRANCE, 0.0, delta)
     cake_turntable.rotate_y(deg_to_rad(rotation_speed_degrees) * turn_delta)
     mascot_root.rotation.x = 0.03 * sin(time * 1.5)
     mascot_root.rotation.y = -0.24 + 0.06 * sin(time * 0.92)
@@ -118,7 +126,7 @@ func _animate_scene(time: float, delta: float) -> void:
         star.rotation.z = phase + drift * 0.15
         star.scale = Vector3.ONE * maxf(0.0001, intro * star_sizes[index] * twinkle)
 
-    var ornament_reveal := smoothstep(6.55, 8.35, time)
+    var ornament_reveal := smoothstep(7.0, 8.75, time)
     for index in range(cloche_ornaments.size()):
         var ornament := cloche_ornaments[index]
         var phase := float(index) * 2.39
@@ -129,13 +137,15 @@ func _animate_scene(time: float, delta: float) -> void:
         ornament.rotation = Vector3(0.17 * sin(drift), 0.30 * cos(drift * 0.7), 0.24 * sin(drift * 0.7 + phase))
         ornament.scale = Vector3.ONE * maxf(0.0001, ornament_reveal * (0.91 + 0.09 * sin(drift * 1.7)))
 
+    _animate_countdown(time)
+    var balloon_time := (time - COUNTDOWN_END) * BALLOON_WAVE_END / (CAKE_ENTRANCE - COUNTDOWN_END)
     for index in range(balloon_nodes.size()):
         var balloon := balloon_nodes[index]
         var flight := balloon_flights[index]
-        balloon.visible = time >= flight.x and time < minf(flight.y, BALLOON_WAVE_END)
+        balloon.visible = balloon_time >= flight.x and balloon_time < flight.y and time < CAKE_ENTRANCE
         if not balloon.visible:
             continue
-        var age := time - flight.x
+        var age := balloon_time - flight.x
         var lift := age / (flight.y - flight.x)
         var phase := float(index) * 2.39
         balloon.position.y = lerpf(-5.0, 6.8, lift)
@@ -271,6 +281,89 @@ func _build_scene() -> void:
     _add_gift_box()
     _add_balloons()
     _add_stage()
+    _add_countdown()
+
+
+func _add_countdown() -> void:
+    var font := SystemFont.new()
+    font.font_names = PackedStringArray(["Arial", "DejaVu Sans"])
+    font.font_weight = 800
+    var colors := [Color("#74cef0"), Color("#a9d97d"), Color("#f2b55f")]
+    var wax := _make_material(Color("#ffdca9"), 0.15, 0.27, Color("#fbb85d"), 0.18)
+    var wick := _make_material(Color("#533327"))
+    var sugar := _make_material(Color("#ffebce"), 0.05, 0.42, Color("#ffcc91"), 0.14)
+    var sugar_pearl := SphereMesh.new()
+    sugar_pearl.radius = 0.036
+    sugar_pearl.height = 0.072
+    sugar_pearl.radial_segments = 12
+    sugar_pearl.rings = 6
+    var sugar_paths := [
+        [Vector2(-0.23, 0.64), Vector2(0.0, 0.70), Vector2(0.22, 0.58), Vector2(0.24, 0.33),
+            Vector2(0.05, 0.07), Vector2(0.25, -0.21), Vector2(0.23, -0.49), Vector2(0.04, -0.67), Vector2(-0.21, -0.61)],
+        [Vector2(-0.23, 0.63), Vector2(0.0, 0.70), Vector2(0.24, 0.56), Vector2(0.24, 0.28),
+            Vector2(0.04, 0.0), Vector2(-0.16, -0.25), Vector2(-0.26, -0.53), Vector2(-0.14, -0.68),
+            Vector2(0.11, -0.68), Vector2(0.36, -0.68)],
+        [Vector2(-0.23, 0.47), Vector2(-0.03, 0.61), Vector2(0.18, 0.72), Vector2(0.23, 0.49),
+            Vector2(0.23, 0.23), Vector2(0.23, -0.03), Vector2(0.23, -0.29),
+            Vector2(0.23, -0.55), Vector2(0.23, -0.72)],
+    ]
+    for index in range(3):
+        var digit := Node3D.new()
+        digit.name = "Countdown%d" % (3 - index)
+        digit.position = Vector3(0.0, 0.40, 0.0)
+        add_child(digit)
+
+        var text_mesh := TextMesh.new()
+        text_mesh.text = str(3 - index)
+        text_mesh.font = font
+        text_mesh.font_size = 160
+        text_mesh.pixel_size = 0.01
+        text_mesh.depth = 0.14
+        var body := MeshInstance3D.new()
+        body.mesh = text_mesh
+        var color: Color = colors[index]
+        body.material_override = _make_material(color, 0.18, 0.27, color, 0.43)
+        var bounds := text_mesh.get_aabb()
+        var digit_scale := 1.70 / bounds.size.y
+        body.scale = Vector3.ONE * digit_scale
+        body.position = -bounds.get_center() * digit_scale
+        digit.add_child(body)
+        for point: Vector2 in sugar_paths[index]:
+            var pearl := MeshInstance3D.new()
+            pearl.mesh = sugar_pearl
+            pearl.material_override = sugar
+            pearl.position = Vector3(point.x, point.y, bounds.size.z * digit_scale * 0.5)
+            pearl.scale.z = 0.64
+            digit.add_child(pearl)
+
+        var candle_x := 0.17 if index == 2 else 0.0
+        _add_cylinder(digit, "WaxCollar", 0.076, 0.106, 0.075, 0.85, wax).position.x = candle_x
+        _add_cylinder(digit, "Wick", 0.017, 0.020, 0.102, 0.91, wick).position.x = candle_x
+        var flame := MeshInstance3D.new()
+        flame.name = "CountdownFlame"
+        flame.mesh = flame_nodes[0].mesh
+        flame.material_override = _make_material(Color("#ffa048"), 0.0, 0.35, Color("#ff831f"), 1.40)
+        flame.position = Vector3(candle_x, 1.14, 0.0)
+        digit.add_child(flame)
+        countdown_numbers.append(digit)
+        countdown_flames.append(flame)
+
+
+func _animate_countdown(time: float) -> void:
+    var beat := COUNTDOWN_END / 3.0
+    for index in range(countdown_numbers.size()):
+        var number := countdown_numbers[index]
+        var phase := (time - float(index) * beat) / beat
+        number.visible = phase >= 0.0 and phase < 1.0
+        if not number.visible:
+            continue
+        var envelope := smoothstep(0.0, 0.18, phase) * (1.0 - smoothstep(0.80, 1.0, phase))
+        number.scale = Vector3.ONE * maxf(0.001, envelope)
+        number.rotation.y = lerpf(-0.23, 0.19, phase)
+        var flame := countdown_flames[index]
+        var flicker := sin(time * 18.0) + sin(time * 31.0) * 0.35
+        flame.scale = Vector3(0.77 - flicker * 0.052, 1.47 + flicker * 0.10, 0.75)
+        flame.rotation.z = 0.10 * sin(time * 11.0)
 
 
 func _add_cream_swirl(parent: Node3D, center: Vector3, material: Material, node_name: String) -> void:
@@ -928,7 +1021,10 @@ func _add_cloche_ornaments() -> void:
     var cluster := Node3D.new()
     cluster.name = "ClocheOrnaments"
     cake_platform.add_child(cluster)
-    for index in range(centerpieces.size() + 20):
+    const SMALL_ORNAMENTS := 40
+    var confetti := BoxMesh.new()
+    confetti.size = Vector3(0.047, 0.070, 0.016)
+    for index in range(centerpieces.size() + SMALL_ORNAMENTS):
         var ornament := MeshInstance3D.new()
         var location: Vector3
         if index < centerpieces.size():
@@ -936,12 +1032,15 @@ func _add_cloche_ornaments() -> void:
             ornament.name = ("CandyStar" if is_star else "SugarHeart") + str(index)
             ornament.mesh = star if is_star else heart
             location = centerpieces[index] * Vector3(0.88, 1.0, 0.88)
+            location.y = CLOCHE_BASE_Y + (location.y - CLOCHE_BASE_Y) * 0.91
         else:
-            ornament.name = "Pearl" + str(index)
-            ornament.mesh = pearl
-            var row := float(index - centerpieces.size()) / 19.0
-            var y := lerpf(0.26, 2.30, row)
-            var radial := 1.82 * sqrt(1.0 - pow((y + 0.88) / 3.38, 2.0)) - 0.18
+            var is_pearl := index % 3 != 0
+            ornament.name = ("Pearl" if is_pearl else "Confetti") + str(index)
+            ornament.mesh = pearl if is_pearl else confetti
+            var row := float(index - centerpieces.size()) / float(SMALL_ORNAMENTS - 1)
+            var y := lerpf(0.20, 1.98, row)
+            var theta := acos(pow((y - CLOCHE_BASE_Y) / CLOCHE_HEIGHT, 1.0 / CLOCHE_CURVE))
+            var radial := CLOCHE_RADIUS * pow(sin(theta), CLOCHE_CURVE) - 0.18
             var angle := float(index) * 2.39
             location = Vector3(
                 radial * cos(angle),
@@ -983,20 +1082,22 @@ func _make_candy_mesh(outline: PackedVector2Array) -> ArrayMesh:
 
 
 func _add_bell_cloche() -> void:
-    const RADIUS := 1.82
-    const HEIGHT := 3.38
-    const BASE_Y := -0.88
     const ROWS := 44
     const SEGMENTS := 96
     var surface := SurfaceTool.new()
     surface.begin(Mesh.PRIMITIVE_TRIANGLES)
     for row in range(ROWS + 1):
         var theta := PI * 0.5 * float(row) / float(ROWS)
+        var across := sin(theta)
+        var up := maxf(0.0, cos(theta))
         for segment in range(SEGMENTS + 1):
             var azimuth := TAU * float(segment) / float(SEGMENTS)
             var radial := Vector3(cos(azimuth), 0.0, sin(azimuth))
-            surface.set_normal((radial * sin(theta) / RADIUS + Vector3.UP * cos(theta) / HEIGHT).normalized())
-            surface.add_vertex(radial * (RADIUS * sin(theta)) + Vector3.UP * (BASE_Y + HEIGHT * cos(theta)))
+            var normal := radial * (pow(across, 2.0 - CLOCHE_CURVE) / CLOCHE_RADIUS)
+            normal.y = pow(up, 2.0 - CLOCHE_CURVE) / CLOCHE_HEIGHT
+            surface.set_normal(normal.normalized())
+            var height := CLOCHE_BASE_Y + CLOCHE_HEIGHT * pow(up, CLOCHE_CURVE)
+            surface.add_vertex(radial * (CLOCHE_RADIUS * pow(across, CLOCHE_CURVE)) + Vector3.UP * height)
     for row in range(ROWS):
         for segment in range(SEGMENTS):
             var a := row * (SEGMENTS + 1) + segment
@@ -1025,7 +1126,7 @@ void fragment() {
     vec3 tint = mix(vec3(0.54, 0.70, 0.90), vec3(0.96, 0.76, 0.50),
         smoothstep(-0.10, 0.64, normal.y - normal.x * 0.24));
     ALBEDO = mix(tint, vec3(1.0, 0.87, 0.66), warm * 0.54);
-    ALPHA = 0.008 + 0.57 * fresnel + 0.18 * warm + 0.12 * cool;
+    ALPHA = 0.006 + 0.48 * fresnel + 0.23 * warm + 0.14 * cool;
 }
 """
     glass.shader = shader
@@ -1038,8 +1139,12 @@ void fragment() {
 
     var bronze := _make_material(Color("#a16a3d"), 0.60, 0.29, Color("#ab6835"), 0.12)
     var gold := _make_material(Color("#dfae66"), 0.52, 0.22, Color("#d7a364"), 0.25)
-    _add_torus(cake_platform, "ClocheBronzeSeat", 1.77, 1.86, 0.03, BASE_Y, bronze)
-    _add_torus(cake_platform, "ClocheGoldLip", 1.805, 1.84, 0.016, BASE_Y + 0.029, gold)
+    _add_torus(cake_platform, "ClocheBronzeSeat", 1.77, 1.86, 0.03, CLOCHE_BASE_Y, bronze)
+    _add_torus(cake_platform, "ClocheGoldLip", 1.805, 1.84, 0.016, CLOCHE_BASE_Y + 0.029, gold)
+    var crown := CLOCHE_BASE_Y + CLOCHE_HEIGHT
+    _add_cylinder(cake_platform, "ClocheKnobSeat", 0.071, 0.116, 0.048, crown + 0.013, gold)
+    var knob := _add_sphere(cake_platform, "ClochePearlKnob", 0.11, gold, Vector3(0.0, crown + 0.103, 0.0))
+    knob.scale = Vector3(1.02, 0.70, 1.02)
 
 
 func _add_tube(parent: Node3D, title: String, path: Curve3D, radius: float, material: Material) -> void:
