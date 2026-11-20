@@ -1,0 +1,42 @@
+name: Validate Magic Desktop
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python source
+        run: python -m py_compile app/main.py
+
+      - name: Validate JSON settings
+        run: python -m json.tool config/settings.json
+
+      - name: Download Godot console runtime
+        shell: pwsh
+        run: |
+          $url = "https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_win64_console.exe.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\godot.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\godot.zip" -DestinationPath "$env:RUNNER_TEMP\godot" -Force
+          $godot = Get-ChildItem "$env:RUNNER_TEMP\godot" -Recurse -Filter "*console.exe" | Select-Object -First 1
+          if (-not $godot) { throw "Godot console executable was not found in the release archive." }
+          "GODOT_EXE=$($godot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Parse and load Godot project
+        shell: pwsh
+        run: |
+          & $env:GODOT_EXE --headless --path "$env:GITHUB_WORKSPACE\engine" --editor --quit
+          if ($LASTEXITCODE -ne 0) { throw "Godot project validation failed with exit code $LASTEXITCODE." }
