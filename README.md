@@ -81,7 +81,7 @@ magic_desktop/
 
 ### 1. 提示找不到 Godot
 
-在控制中心点击“选择 Godot.exe”，重新选择 Godot 4 的可执行文件。路径会保存在 `config/settings.json`。
+在控制中心点击“选择 Godot.exe”，重新选择 Godot 4 的可执行文件。路径会保存在 `config/settings.local.json`（该文件已加入 Git 忽略规则，不会上传）。
 
 ### 2. 窗口有黑色背景，不透明
 
