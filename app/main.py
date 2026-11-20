@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import socket
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -150,13 +151,16 @@ class ExportWorker(QThread):
         self.frame_count = self.duration_seconds * self.fps
 
     def run(self) -> None:
-        temp_video = self.output_path.with_name(
-            f".{self.output_path.stem}_render_tmp.avi"
-        )
+        temp_dir = self.output_path.parent / f".{self.output_path.stem}_render_tmp"
+        frame_path = temp_dir / "frame.png"
+        frame_pattern = temp_dir / "frame%08d.png"
+        audio_path = temp_dir / "frame.wav"
+
         try:
             self.output_path.parent.mkdir(parents=True, exist_ok=True)
-            if temp_video.exists():
-                temp_video.unlink()
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+            temp_dir.mkdir(parents=True, exist_ok=True)
 
             env = os.environ.copy()
             env["MAGIC_DESKTOP_EXPORT"] = "1"
@@ -166,13 +170,13 @@ class ExportWorker(QThread):
             env["MAGIC_DESKTOP_SPEED"] = str(self.rotation_speed)
 
             self.progress.emit(
-                f"正在渲染 {self.duration_seconds} 秒 3D 动画"
+                f"正在无损渲染 {self.duration_seconds} 秒 3D 动画"
                 f"（{self.frame_count} 帧，1920×1080，30 FPS）..."
             )
             render_command = [
                 str(self.godot_exe),
                 "--path", str(self.engine_dir),
-                "--write-movie", str(temp_video),
+                "--write-movie", str(frame_path),
                 "--fixed-fps", str(self.fps),
                 "--quit-after", str(self.frame_count),
                 "--resolution", "1920x1080",
@@ -190,15 +194,21 @@ class ExportWorker(QThread):
             if render_result.returncode != 0:
                 details = (render_result.stderr or render_result.stdout or "")[-5000:]
                 raise RuntimeError(
-                    "Godot 视频渲染失败。\n"
+                    "Godot 无损帧渲染失败。\n"
                     f"退出代码：{render_result.returncode}\n{details}"
                 )
-            if not temp_video.is_file() or temp_video.stat().st_size == 0:
+
+            rendered_frames = list(temp_dir.glob("frame*.png"))
+            if len(rendered_frames) != self.frame_count:
                 raise RuntimeError(
-                    "Godot 没有生成 AVI 临时视频。请检查 Godot 版本和 logs/godot.log。"
+                    "Godot 输出帧数不完整："
+                    f"期望 {self.frame_count} 帧，实际 {len(rendered_frames)} 帧。"
+                    "请检查 logs/godot.log。"
                 )
 
-            self.progress.emit("3D 渲染完成，正在编码最终文件...")
+            self.progress.emit(
+                f"无损渲染完成（{len(rendered_frames)} 帧），正在编码最终文件..."
+            )
             import imageio_ffmpeg
 
             ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
@@ -208,17 +218,18 @@ class ExportWorker(QThread):
                 "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=0x0b1020,"
                 "setsar=1"
             )
+
             if self.export_format == "mp4":
                 encode_command = [
                     ffmpeg_exe, "-y",
-                    "-i", str(temp_video),
+                    "-framerate", str(self.fps),
+                    "-start_number", "0",
+                    "-i", str(frame_pattern),
                 ]
-                has_music = bool(self.music_file) and Path(self.music_file).is_file()
-                if has_music:
-                    encode_command.extend([
-                        "-stream_loop", "-1",
-                        "-i", self.music_file,
-                    ])
+                has_audio = audio_path.is_file() and audio_path.stat().st_size > 44
+                if has_audio:
+                    encode_command.extend(["-i", str(audio_path)])
+
                 encode_command.extend([
                     "-map", "0:v:0",
                     "-vf", video_filter,
@@ -230,16 +241,16 @@ class ExportWorker(QThread):
                     "-profile:v", "high",
                     "-pix_fmt", "yuv420p",
                 ])
-                if has_music:
+                if has_audio:
                     encode_command.extend([
                         "-map", "1:a:0",
-                        "-af", f"volume={self.music_volume:.3f}",
                         "-c:a", "aac",
                         "-b:a", "192k",
                         "-shortest",
                     ])
                 else:
-                    encode_command.extend(["-an"])
+                    encode_command.append("-an")
+
                 encode_command.extend([
                     "-movflags", "+faststart",
                     str(self.output_path),
@@ -253,8 +264,9 @@ class ExportWorker(QThread):
                 )
                 encode_command = [
                     ffmpeg_exe, "-y",
-                    "-i", str(temp_video),
-                    "-map", "0:v:0",
+                    "-framerate", str(self.fps),
+                    "-start_number", "0",
+                    "-i", str(frame_pattern),
                     "-an",
                     "-t", duration_text,
                     "-filter_complex", gif_filter,
@@ -268,7 +280,7 @@ class ExportWorker(QThread):
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=900,
+                timeout=1200,
             )
             if encode_result.returncode != 0:
                 details = (encode_result.stderr or encode_result.stdout or "")[-5000:]
@@ -281,8 +293,8 @@ class ExportWorker(QThread):
             self.result_ready.emit(False, str(exc))
         finally:
             try:
-                if temp_video.exists():
-                    temp_video.unlink()
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir)
             except OSError:
                 pass
 
