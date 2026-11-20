@@ -10,6 +10,7 @@ const BALLOON_COUNT := 30
 var udp := PacketPeerUDP.new()
 var export_mode := false
 var cake_platform: Node3D
+var cake_turntable: Node3D
 var cake_root: Node3D
 var mascot_root: Node3D
 var birthday_label: Label3D
@@ -36,6 +37,8 @@ var backdrop_material: ShaderMaterial
 var balloon_nodes: Array[Node3D] = []
 var balloon_base_x: Array[float] = []
 var balloon_flights: Array[Vector2] = []
+var cloche_ornaments: Array[MeshInstance3D] = []
+var ornament_positions: Array[Vector3] = []
 
 
 func _ready() -> void:
@@ -93,7 +96,8 @@ func _animate_scene(time: float, delta: float) -> void:
     # The porcelain stand and its companions travel with the stage lift.
     cake_platform.visible = time >= BALLOON_WAVE_END
     cake_platform.position.y = lerpf(-8.5, 0.0, platform_lift)
-    cake_root.rotate_y(deg_to_rad(rotation_speed_degrees) * delta)
+    var turn_delta := clampf(time - BALLOON_WAVE_END, 0.0, delta)
+    cake_turntable.rotate_y(deg_to_rad(rotation_speed_degrees) * turn_delta)
     mascot_root.rotation.x = 0.03 * sin(time * 1.5)
     mascot_root.rotation.y = -0.24 + 0.06 * sin(time * 0.92)
 
@@ -113,6 +117,17 @@ func _animate_scene(time: float, delta: float) -> void:
         star.position = star_base_positions[index] + Vector3(0.14 * sin(drift), 0.09 * cos(drift * 0.72), 0.09 * sin(drift))
         star.rotation.z = phase + drift * 0.15
         star.scale = Vector3.ONE * maxf(0.0001, intro * star_sizes[index] * twinkle)
+
+    var ornament_reveal := smoothstep(6.55, 8.35, time)
+    for index in range(cloche_ornaments.size()):
+        var ornament := cloche_ornaments[index]
+        var phase := float(index) * 2.39
+        var drift := time * 1.15 + phase
+        ornament.position = ornament_positions[index] + Vector3(
+            sin(drift) * 0.024, cos(drift * 0.84) * 0.038, sin(drift * 0.68) * 0.023
+        )
+        ornament.rotation = Vector3(0.17 * sin(drift), 0.30 * cos(drift * 0.7), 0.24 * sin(drift * 0.7 + phase))
+        ornament.scale = Vector3.ONE * maxf(0.0001, ornament_reveal * (0.91 + 0.09 * sin(drift * 1.7)))
 
     for index in range(balloon_nodes.size()):
         var balloon := balloon_nodes[index]
@@ -147,6 +162,10 @@ func _build_scene() -> void:
     cake_platform = Node3D.new()
     cake_platform.name = "CakePlatform"
     add_child(cake_platform)
+    cake_turntable = Node3D.new()
+    cake_turntable.name = "CakeTurntable"
+    cake_turntable.rotation.y = -0.46
+    cake_platform.add_child(cake_turntable)
 
     var chocolate := _make_material(Color("#eaa0b5"), 0.04, 0.30)
     var dark_chocolate := _make_material(Color("#c96d8a"), 0.06, 0.28)
@@ -177,7 +196,7 @@ func _build_scene() -> void:
     cake_root = Node3D.new()
     cake_root.name = "HeroCake"
     cake_root.scale = Vector3.ONE * 1.12
-    cake_platform.add_child(cake_root)
+    cake_turntable.add_child(cake_root)
 
     # Porcelain stand: a raised foot, broad plate and fine metallic rim.
     _add_cylinder(cake_root, "StandFoot", 0.60, 0.68, 0.13, -0.73, plate_material)
@@ -467,8 +486,8 @@ func _add_strawberries() -> void:
 func _add_mascot_bear() -> void:
     mascot_root = Node3D.new()
     mascot_root.name = "CuteTeddyMascot"
-    mascot_root.position = Vector3(2.10, -0.89, 0.40)
-    cake_platform.add_child(mascot_root)
+    mascot_root.position = Vector3(2.17, -0.89, 0.40)
+    cake_turntable.add_child(mascot_root)
 
     var fur := _make_material(Color("#c98d62"), 0.0, 0.62)
     var muzzle := _make_material(Color("#fff0d9"), 0.0, 0.52)
@@ -553,7 +572,7 @@ func _add_gift_box() -> void:
     var gift_root := Node3D.new()
     gift_root.name = "TinyBirthdayGift"
     gift_root.position = Vector3(-2.08, -0.89, 0.47)
-    cake_platform.add_child(gift_root)
+    cake_turntable.add_child(gift_root)
 
     var gift_pink := _make_material(Color("#f28eb0"), 0.08, 0.30)
     var ribbon_gold := _make_material(Color("#f6c56e"), 0.55, 0.22)
@@ -873,6 +892,94 @@ func _add_stage() -> void:
     _add_torus(cake_platform, "DaisLowerInlay", 2.49, 2.54, 0.019, -1.016, brass)
 
     _add_bell_cloche()
+    _add_cloche_ornaments()
+
+
+func _add_cloche_ornaments() -> void:
+    var star_outline := PackedVector2Array()
+    for index in range(10):
+        var angle := PI * 0.5 + float(index) * TAU / 10.0
+        star_outline.append(Vector2(cos(angle), sin(angle)) * (0.113 if index % 2 == 0 else 0.052))
+    var heart_outline := PackedVector2Array([
+        Vector2(0.0, -0.109), Vector2(0.094, -0.012), Vector2(0.103, 0.040),
+        Vector2(0.076, 0.083), Vector2(0.037, 0.092), Vector2(0.0, 0.061),
+        Vector2(-0.037, 0.092), Vector2(-0.076, 0.083), Vector2(-0.103, 0.040),
+        Vector2(-0.094, -0.012),
+    ])
+    var star := _make_candy_mesh(star_outline)
+    var heart := _make_candy_mesh(heart_outline)
+    var pearl := SphereMesh.new()
+    pearl.radius = 0.030
+    pearl.height = 0.060
+    pearl.radial_segments = 12
+    pearl.rings = 6
+    var colors := [Color("#f9ba61"), Color("#fa8fb7"), Color("#88d5ed"), Color("#c3abf4")]
+    var materials: Array[StandardMaterial3D] = []
+    for color: Color in colors:
+        materials.append(_make_material(color, 0.15, 0.30, color, 0.29))
+    var centerpieces := [
+        Vector3(-0.43, 2.16, 0.22), Vector3(0.43, 2.13, -0.27),
+        Vector3(-0.80, 1.89, -0.33), Vector3(0.81, 1.85, 0.29),
+        Vector3(-1.03, 1.58, 0.47), Vector3(1.12, 1.53, -0.38),
+        Vector3(-1.22, 1.27, -0.50), Vector3(1.26, 1.19, 0.42),
+        Vector3(-1.37, 0.94, 0.48), Vector3(1.38, 0.88, -0.45),
+        Vector3(-1.49, 0.47, 0.51), Vector3(1.50, 0.39, 0.48),
+    ]
+    var cluster := Node3D.new()
+    cluster.name = "ClocheOrnaments"
+    cake_platform.add_child(cluster)
+    for index in range(centerpieces.size() + 20):
+        var ornament := MeshInstance3D.new()
+        var location: Vector3
+        if index < centerpieces.size():
+            var is_star := index % 3 != 1
+            ornament.name = ("CandyStar" if is_star else "SugarHeart") + str(index)
+            ornament.mesh = star if is_star else heart
+            location = centerpieces[index] * Vector3(0.88, 1.0, 0.88)
+        else:
+            ornament.name = "Pearl" + str(index)
+            ornament.mesh = pearl
+            var row := float(index - centerpieces.size()) / 19.0
+            var y := lerpf(0.26, 2.30, row)
+            var radial := 1.82 * sqrt(1.0 - pow((y + 0.88) / 3.38, 2.0)) - 0.18
+            var angle := float(index) * 2.39
+            location = Vector3(
+                radial * cos(angle),
+                y,
+                radial * sin(angle)
+            )
+        ornament.material_override = materials[index % materials.size()]
+        ornament.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+        cluster.add_child(ornament)
+        cloche_ornaments.append(ornament)
+        ornament_positions.append(location)
+
+
+func _make_candy_mesh(outline: PackedVector2Array) -> ArrayMesh:
+    var surface := SurfaceTool.new()
+    surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+    var count := outline.size()
+    var depths := [-0.038, -0.019, 0.019, 0.038]
+    for row in range(depths.size()):
+        var bevel := 0.76 if row == 0 or row == depths.size() - 1 else 1.0
+        for point in outline:
+            surface.add_vertex(Vector3(point.x * bevel, point.y * bevel, depths[row]))
+    for row in range(depths.size() - 1):
+        for index in range(count):
+            var a := row * count + index
+            var b := row * count + (index + 1) % count
+            for vertex in [a, a + count, b, b, a + count, b + count]:
+                surface.add_index(vertex)
+    var faces := Geometry2D.triangulate_polygon(outline)
+    var front := (depths.size() - 1) * count
+    for index in range(0, faces.size(), 3):
+        var a := faces[index]
+        var b := faces[index + 1]
+        var c := faces[index + 2]
+        for vertex in [a, b, c, front + a, front + c, front + b]:
+            surface.add_index(vertex)
+    surface.generate_normals()
+    return surface.commit()
 
 
 func _add_bell_cloche() -> void:
