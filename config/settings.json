@@ -3,5 +3,7 @@
   "rotation_speed": 24,
   "birthday_text": "Happy Birthday",
   "window_width": 820,
-  "window_height": 720
+  "window_height": 720,
+  "music_file": "",
+  "music_volume": 0.55
 }
