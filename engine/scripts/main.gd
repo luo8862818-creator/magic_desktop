@@ -42,6 +42,10 @@ func _ready() -> void:
         DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, true)
         DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_TRANSPARENT, true)
         DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_MOUSE_PASSTHROUGH, false)
+    else:
+        DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS, false)
+        DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, false)
+        DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_TRANSPARENT, false)
 
     _setup_environment()
     _build_scene()
