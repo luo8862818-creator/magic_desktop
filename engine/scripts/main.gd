@@ -31,7 +31,6 @@ var drag_window_origin := Vector2i.ZERO
 var rng := RandomNumberGenerator.new()
 var warm_rim: OmniLight3D
 var softbox: DirectionalLight3D
-var streamers: Array[MeshInstance3D] = []
 var star_sizes: Array[float] = []
 var backdrop_material: ShaderMaterial
 var balloon_nodes: Array[Node3D] = []
@@ -87,7 +86,7 @@ func _animate_scene(time: float, delta: float) -> void:
     var focus := smoothstep(6.65, 8.25, time)
     var reveal := smoothstep(8.55, 10.45, time)
     birthday_label.modulate.a = reveal
-    birthday_label.position.y = 2.14 + reveal * 0.15
+    birthday_label.position.y = 2.81 + reveal * 0.13
     softbox.light_energy = 0.17 + 0.37 * intro + 0.16 * focus
     warm_rim.light_energy = 0.22 + 0.66 * focus
     backdrop_material.set_shader_parameter("arrival", intro)
@@ -114,13 +113,6 @@ func _animate_scene(time: float, delta: float) -> void:
         star.position = star_base_positions[index] + Vector3(0.14 * sin(drift), 0.09 * cos(drift * 0.72), 0.09 * sin(drift))
         star.rotation.z = phase + drift * 0.15
         star.scale = Vector3.ONE * maxf(0.0001, intro * star_sizes[index] * twinkle)
-
-    var ribbon_time := maxf(0.0, time - BALLOON_WAVE_END)
-    var motion := smoothstep(0.0, 2.0, ribbon_time)
-    for index in range(streamers.size()):
-        var phase := float(index) * 1.6
-        streamers[index].rotation.z = 0.023 * motion * sin(ribbon_time * 0.65 + phase)
-        streamers[index].position.y = 0.11 * motion * sin(ribbon_time * 0.54 + phase)
 
     for index in range(balloon_nodes.size()):
         var balloon := balloon_nodes[index]
@@ -251,7 +243,6 @@ func _build_scene() -> void:
     _add_candles(candle_white, blue, cream)
     _add_side_decorations(gold, cream, candy_colors)
     _add_strawberries()
-    _add_ribbons()
     _add_floating_stars()
     _add_export_backdrop()
     _add_lighting()
@@ -476,7 +467,7 @@ func _add_strawberries() -> void:
 func _add_mascot_bear() -> void:
     mascot_root = Node3D.new()
     mascot_root.name = "CuteTeddyMascot"
-    mascot_root.position = Vector3(1.97, -0.89, 0.33)
+    mascot_root.position = Vector3(2.10, -0.89, 0.40)
     cake_platform.add_child(mascot_root)
 
     var fur := _make_material(Color("#c98d62"), 0.0, 0.62)
@@ -561,7 +552,7 @@ func gold_material_for_mascot() -> Material:
 func _add_gift_box() -> void:
     var gift_root := Node3D.new()
     gift_root.name = "TinyBirthdayGift"
-    gift_root.position = Vector3(-1.95, -0.89, 0.47)
+    gift_root.position = Vector3(-2.08, -0.89, 0.47)
     cake_platform.add_child(gift_root)
 
     var gift_pink := _make_material(Color("#f28eb0"), 0.08, 0.30)
@@ -609,68 +600,6 @@ func _add_gift_box() -> void:
         )
         loop.scale = Vector3(1.0, 0.48, 0.62)
         loop.rotation.z = side * 0.35
-
-
-func _add_ribbons() -> void:
-    var pink := _make_material(Color("#f28ab5"), 0.42, 0.22, Color("#f28ab5"), 0.16)
-    var cyan := _make_material(Color("#67d7ed"), 0.48, 0.18, Color("#67d7ed"), 0.18)
-    var gold := _make_material(Color("#f6c56e"), 0.72, 0.20, Color("#ffcf75"), 0.22)
-
-    var left_points: Array[Vector3] = []
-    var right_points: Array[Vector3] = []
-    for index in range(90):
-        var t := float(index) / 89.0
-        var angle := t * TAU * 1.25
-        left_points.append(Vector3(
-            -2.14 + 0.22 * sin(angle),
-            -0.05 + t * 1.85,
-            -2.0 + 0.20 * cos(angle)
-        ))
-        right_points.append(Vector3(
-            2.25 + 0.20 * sin(angle + 1.2),
-            0.02 + t * 1.72,
-            -2.2 + 0.20 * cos(angle + 1.2)
-        ))
-
-    _add_ribbon_mesh(left_points, 0.105, pink, "FloatingPinkRibbon")
-    _add_ribbon_mesh(right_points, 0.095, cyan, "FloatingBlueRibbon")
-
-
-
-func _add_ribbon_mesh(points: Array[Vector3], width: float, material: Material, node_name: String) -> void:
-    var surface := SurfaceTool.new()
-    surface.begin(Mesh.PRIMITIVE_TRIANGLES)
-
-    for index in range(points.size() - 1):
-        var tangent := (points[index + 1] - points[index]).normalized()
-        var side := tangent.cross(Vector3.FORWARD).normalized()
-        if side.length() < 0.01:
-            side = Vector3.RIGHT
-        side *= width * 0.5
-
-        var a := points[index] - side
-        var b := points[index] + side
-        var c := points[index + 1] - side
-        var d := points[index + 1] + side
-
-        surface.add_vertex(a)
-        surface.add_vertex(b)
-        surface.add_vertex(c)
-        surface.add_vertex(b)
-        surface.add_vertex(d)
-        surface.add_vertex(c)
-
-    surface.generate_normals()
-    var mesh := surface.commit()
-    var ribbon := MeshInstance3D.new()
-    ribbon.name = node_name
-    ribbon.mesh = mesh
-    ribbon.material_override = material
-    if material is StandardMaterial3D:
-        var ribbon_material := material as StandardMaterial3D
-        ribbon_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-    cake_platform.add_child(ribbon)
-    streamers.append(ribbon)
 
 
 func _add_floating_stars() -> void:
@@ -869,7 +798,7 @@ func _add_birthday_text() -> void:
     birthday_label.modulate = Color("#f4d7a2")
     birthday_label.outline_size = 0
     birthday_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-    birthday_label.position = Vector3(0.0, 2.14, -0.22)
+    birthday_label.position = Vector3(0.0, 2.81, -0.42)
     add_child(birthday_label)
 
 
@@ -943,31 +872,67 @@ func _add_stage() -> void:
     _add_torus(cake_platform, "DaisBrassInlay", 2.45, 2.49, 0.024, -0.907, brass)
     _add_torus(cake_platform, "DaisLowerInlay", 2.49, 2.54, 0.019, -1.016, brass)
 
-    var crystal := ShaderMaterial.new()
+    _add_bell_cloche()
+
+
+func _add_bell_cloche() -> void:
+    const RADIUS := 1.82
+    const HEIGHT := 3.38
+    const BASE_Y := -0.88
+    const ROWS := 44
+    const SEGMENTS := 96
+    var surface := SurfaceTool.new()
+    surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+    for row in range(ROWS + 1):
+        var theta := PI * 0.5 * float(row) / float(ROWS)
+        for segment in range(SEGMENTS + 1):
+            var azimuth := TAU * float(segment) / float(SEGMENTS)
+            var radial := Vector3(cos(azimuth), 0.0, sin(azimuth))
+            surface.set_normal((radial * sin(theta) / RADIUS + Vector3.UP * cos(theta) / HEIGHT).normalized())
+            surface.add_vertex(radial * (RADIUS * sin(theta)) + Vector3.UP * (BASE_Y + HEIGHT * cos(theta)))
+    for row in range(ROWS):
+        for segment in range(SEGMENTS):
+            var a := row * (SEGMENTS + 1) + segment
+            var b := a + SEGMENTS + 1
+            if row > 0:
+                surface.add_index(a)
+                surface.add_index(b)
+                surface.add_index(a + 1)
+            surface.add_index(a + 1)
+            surface.add_index(b)
+            surface.add_index(b + 1)
+
+    var glass := ShaderMaterial.new()
     var shader := Shader.new()
     shader.code = """
 shader_type spatial;
-render_mode blend_mix, depth_draw_never;
+render_mode unshaded, blend_mix, depth_draw_never, cull_back;
 void fragment() {
-    float edge = pow(1.0 - max(0.0, dot(normalize(NORMAL), normalize(VIEW))), 2.1);
-    ALBEDO = mix(vec3(0.25, 0.43, 0.64), vec3(0.68, 0.40, 0.71), UV.y);
-    ROUGHNESS = 0.23;
-    EMISSION = ALBEDO * edge * 0.24;
-    ALPHA = 0.11 + 0.37 * edge;
+    vec3 normal = normalize(NORMAL);
+    float facing = clamp(dot(normal, normalize(VIEW)), 0.0, 1.0);
+    float fresnel = pow(1.0 - facing, 3.4);
+    float warm = exp(-pow((normal.x + 0.77) * 12.0, 2.0))
+        * smoothstep(0.08, 0.63, normal.y);
+    float cool = exp(-pow((normal.x - 0.88) * 15.0, 2.0))
+        * smoothstep(-0.15, 0.45, normal.y);
+    vec3 tint = mix(vec3(0.54, 0.70, 0.90), vec3(0.96, 0.76, 0.50),
+        smoothstep(-0.10, 0.64, normal.y - normal.x * 0.24));
+    ALBEDO = mix(tint, vec3(1.0, 0.87, 0.66), warm * 0.54);
+    ALPHA = 0.008 + 0.57 * fresnel + 0.18 * warm + 0.12 * cool;
 }
 """
-    crystal.shader = shader
-    for index in range(3):
-        var path := Curve3D.new()
-        var radius := 2.92 + float(index) * 0.20
-        for segment in range(81):
-            var angle := PI * float(segment) / 80.0
-            path.add_point(Vector3(
-                cos(angle) * radius + float(index - 1) * 0.21,
-                -0.93 + sin(angle) * (3.89 + float(index) * 0.10),
-                -2.85 - float(index) * 0.39 + cos(angle) * 0.41
-            ))
-        _add_tube(cake_platform, "GalleryArch_%d" % index, path, 0.058 if index == 1 else 0.014, crystal if index == 1 else brass)
+    glass.shader = shader
+    var dome := MeshInstance3D.new()
+    dome.name = "GoldRimGlassCloche"
+    dome.mesh = surface.commit()
+    dome.material_override = glass
+    dome.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    cake_platform.add_child(dome)
+
+    var bronze := _make_material(Color("#a16a3d"), 0.60, 0.29, Color("#ab6835"), 0.12)
+    var gold := _make_material(Color("#dfae66"), 0.52, 0.22, Color("#d7a364"), 0.25)
+    _add_torus(cake_platform, "ClocheBronzeSeat", 1.77, 1.86, 0.03, BASE_Y, bronze)
+    _add_torus(cake_platform, "ClocheGoldLip", 1.805, 1.84, 0.016, BASE_Y + 0.029, gold)
 
 
 func _add_tube(parent: Node3D, title: String, path: Curve3D, radius: float, material: Material) -> void:
