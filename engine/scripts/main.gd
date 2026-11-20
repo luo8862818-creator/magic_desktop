@@ -619,8 +619,8 @@ func _add_lighting() -> void:
 func _add_camera() -> void:
     var camera := Camera3D.new()
     camera.name = "HeroCamera"
-    camera.position = Vector3(0.0, 2.45, 8.4)
-    camera.fov = 39.0
+    camera.position = Vector3(0.0, 1.95, 6.0)
+    camera.fov = 38.0
     camera.current = true
     add_child(camera)
     camera.look_at(Vector3(0.0, 0.05, 0.0), Vector3.UP)
