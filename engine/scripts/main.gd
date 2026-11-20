@@ -289,7 +289,7 @@ func _add_side_decorations(gold: Material, cream: Material, candy_colors: Array[
 
     # Alternating candy medallions on the front-facing side.
     for index in range(9):
-        var angle := PI + (float(index) - 4.0) * 0.19
+        var angle := PI * 0.5 + (float(index) - 4.0) * 0.19
         var color: Color = candy_colors[index % candy_colors.size()]
         var position := Vector3(cos(angle) * 1.13, -0.02, sin(angle) * 1.13)
         var medallion := _add_sphere(
@@ -367,6 +367,8 @@ func _add_ribbon_mesh(points: Array[Vector3], width: float, material: Material, 
     ribbon.name = node_name
     ribbon.mesh = mesh
     ribbon.material_override = material
+    if material is StandardMaterial3D:
+        material.cull_mode = BaseMaterial3D.CULL_DISABLED
     add_child(ribbon)
 
 
