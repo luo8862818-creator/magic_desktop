@@ -770,7 +770,7 @@ class MagicDesktopWindow(QMainWindow):
         if self.godot_process and self.godot_process.poll() is None:
             self._send_command({"action": "set_music_volume", "value": volume})
 
-    def _update_export_hint(self) -> None:
+    def _update_export_hint(self, _index: int = -1) -> None:
         if not hasattr(self, "duration_combo"):
             return
         duration = int(self.duration_combo.currentData() or 8)
