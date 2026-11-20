@@ -10,8 +10,8 @@ const CLOCHE_RADIUS := 1.82
 const CLOCHE_HEIGHT := 3.05
 const CLOCHE_BASE_Y := -0.88
 const CLOCHE_CURVE := 0.76
-const BALLOON_LANES := 10
-const BALLOON_COUNT := 30
+const BALLOON_LANES := 14
+const BALLOON_COUNT := 56
 
 var udp := PacketPeerUDP.new()
 var export_mode := false
@@ -117,6 +117,7 @@ func _animate_scene(time: float, delta: float) -> void:
         flame.rotation.z = 0.09 * sin(phase * 0.52)
         flame_lights[index].light_energy = (0.23 + focus * 0.22) * (1.0 + flicker * 0.18)
 
+    var wave_light := smoothstep(COUNTDOWN_END, 4.0, time) * (1.0 - smoothstep(5.8, CAKE_ENTRANCE, time))
     for index in range(star_nodes.size()):
         var star := star_nodes[index]
         var phase := star_phases[index]
@@ -124,7 +125,7 @@ func _animate_scene(time: float, delta: float) -> void:
         var twinkle := smoothstep(-0.60, 0.93, sin(drift * 1.8))
         star.position = star_base_positions[index] + Vector3(0.14 * sin(drift), 0.09 * cos(drift * 0.72), 0.09 * sin(drift))
         star.rotation.z = phase + drift * 0.15
-        star.scale = Vector3.ONE * maxf(0.0001, intro * star_sizes[index] * twinkle)
+        star.scale = Vector3.ONE * maxf(0.0001, intro * star_sizes[index] * twinkle * (1.0 + wave_light * 0.68))
 
     var ornament_reveal := smoothstep(7.0, 8.75, time)
     for index in range(cloche_ornaments.size()):
@@ -291,6 +292,7 @@ func _add_countdown() -> void:
     var colors := [Color("#74cef0"), Color("#a9d97d"), Color("#f2b55f")]
     var wax := _make_material(Color("#ffdca9"), 0.15, 0.27, Color("#fbb85d"), 0.18)
     var wick := _make_material(Color("#533327"))
+    var flame_material := _make_countdown_flame_material()
     var sugar := _make_material(Color("#ffebce"), 0.05, 0.42, Color("#ffcc91"), 0.14)
     var sugar_pearl := SphereMesh.new()
     sugar_pearl.radius = 0.036
@@ -342,8 +344,9 @@ func _add_countdown() -> void:
         var flame := MeshInstance3D.new()
         flame.name = "CountdownFlame"
         flame.mesh = flame_nodes[0].mesh
-        flame.material_override = _make_material(Color("#ffa048"), 0.0, 0.35, Color("#ff831f"), 1.40)
-        flame.position = Vector3(candle_x, 1.14, 0.0)
+        flame.material_override = flame_material
+        flame.extra_cull_margin = 0.5
+        flame.position = Vector3(candle_x, 0.953, 0.0)
         digit.add_child(flame)
         countdown_numbers.append(digit)
         countdown_flames.append(flame)
@@ -361,9 +364,44 @@ func _animate_countdown(time: float) -> void:
         number.scale = Vector3.ONE * maxf(0.001, envelope)
         number.rotation.y = lerpf(-0.23, 0.19, phase)
         var flame := countdown_flames[index]
-        var flicker := sin(time * 18.0) + sin(time * 31.0) * 0.35
-        flame.scale = Vector3(0.77 - flicker * 0.052, 1.47 + flicker * 0.10, 0.75)
-        flame.rotation.z = 0.10 * sin(time * 11.0)
+        var flame_material := flame.material_override as ShaderMaterial
+        flame_material.set_shader_parameter("flame_time", time)
+
+
+func _make_countdown_flame_material() -> ShaderMaterial:
+    var shader := Shader.new()
+    shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, cull_back, depth_draw_never, shadows_disabled;
+uniform float flame_time = 0.0;
+varying float flame_height;
+varying float flame_width;
+void vertex() {
+    float t = clamp(VERTEX.y * 4.0 + 0.5, 0.0, 1.0);
+    flame_height = t;
+    float breath = 0.64 * sin(flame_time * 18.0) + 0.36 * sin(flame_time * 29.0);
+    float taper = pow(1.0 - t, 0.85);
+    VERTEX.xz *= (0.93 - 0.09 * breath) * taper;
+    flame_width = abs(VERTEX.x) / (0.080 * max(taper, 0.04));
+    VERTEX.x += t * t * (0.036 * sin(flame_time * 11.0) + 0.018 * sin(flame_time * 23.0 - t * 4.0));
+    VERTEX.z += t * t * 0.025 * sin(flame_time * 15.0 + t);
+    VERTEX.y = t * (0.45 + breath * 0.043);
+}
+void fragment() {
+    float t = flame_height;
+    vec3 blue = vec3(0.34, 0.43, 0.89);
+    vec3 amber = vec3(1.0, 0.45, 0.12);
+    vec3 core = vec3(1.0, 0.89, 0.54);
+    float hot_center = (1.0 - smoothstep(0.15, 0.78, flame_width))
+        * smoothstep(0.07, 0.22, t) * (1.0 - smoothstep(0.62, 0.88, t));
+    ALBEDO = mix(mix(blue, amber, smoothstep(0.04, 0.23, t)), core, hot_center);
+    ALPHA = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(0.69, 1.0, t))
+        * (1.0 - 0.50 * smoothstep(0.58, 1.10, flame_width));
+}
+"""
+    var material := ShaderMaterial.new()
+    material.shader = shader
+    return material
 
 
 func _add_cream_swirl(parent: Node3D, center: Vector3, material: Material, node_name: String) -> void:
@@ -925,25 +963,28 @@ func _add_balloons() -> void:
         Color("#e9b8ef"),
         Color("#9ec8ff"),
     ]
+    var envelope_shader := _make_balloon_envelope_shader()
     for index in range(BALLOON_COUNT):
         var lane := index % BALLOON_LANES
         var cohort := floorf(float(index) / float(BALLOON_LANES))
         var x := lerpf(-3.9, 3.9, float(lane) / float(BALLOON_LANES - 1))
         x += rng.randf_range(-0.27, 0.27)
-        var departure := 0.08 + cohort * 0.63 + rng.randf_range(0.0, 0.52)
-        var arrival := minf(departure + rng.randf_range(3.65, 4.35), BALLOON_WAVE_END)
+        var departure := 0.08 + cohort * 0.47 + rng.randf_range(0.0, 0.52)
+        var arrival := minf(departure + rng.randf_range(3.45, 4.12), BALLOON_WAVE_END)
         var root := Node3D.new()
         root.name = "RisingBalloon_%02d" % index
         root.position = Vector3(x, -5.0, rng.randf_range(-2.35, 0.48))
-        root.scale = Vector3.ONE * rng.randf_range(0.64, 1.03)
+        root.scale = Vector3.ONE * rng.randf_range(0.54, 0.96)
         add_child(root)
 
         var color: Color = colors[(index * 3 + int(cohort)) % colors.size()]
         var balloon_material := _make_material(color, 0.04, 0.22, color * 0.10, 0.08)
 
-        balloon_material.metallic = 0.40 if index % 3 == 0 else 0.04
-        balloon_material.clearcoat_enabled = true
-        balloon_material.clearcoat = 0.8
+        var envelope := ShaderMaterial.new()
+        envelope.shader = envelope_shader
+        envelope.set_shader_parameter("latex_color", color)
+        envelope.set_shader_parameter("pattern_offset", float(index) * 0.371)
+        envelope.set_shader_parameter("foil", 0.24 if index % 3 == 0 else 0.04)
         var body := MeshInstance3D.new()
         body.name = "PearlescentEnvelope"
         var body_mesh := SphereMesh.new()
@@ -952,7 +993,7 @@ func _add_balloons() -> void:
         body_mesh.radial_segments = 32
         body_mesh.rings = 20
         body.mesh = body_mesh
-        body.material_override = balloon_material
+        body.material_override = envelope
         body.scale = Vector3(0.85, 1.0, 0.86)
         root.add_child(body)
 
@@ -975,6 +1016,39 @@ func _add_balloons() -> void:
         balloon_nodes.append(root)
         balloon_base_x.append(x)
         balloon_flights.append(Vector2(departure, arrival))
+
+
+func _make_balloon_envelope_shader() -> Shader:
+    var shader := Shader.new()
+    shader.code = """
+shader_type spatial;
+uniform vec4 latex_color : source_color = vec4(1.0);
+uniform float pattern_offset = 0.0;
+uniform float foil = 0.04;
+float hash_cell(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+void fragment() {
+    vec2 grid = UV * vec2(16.0, 8.0) + vec2(pattern_offset, 0.0);
+    vec2 id = floor(grid);
+    float random = hash_cell(vec2(mod(id.x, 16.0), id.y));
+    vec2 p = fract(grid) - vec2(0.5);
+    p -= vec2(random - 0.5, fract(random * 7.0) - 0.5) * 0.25;
+    float angle = atan(p.y, p.x);
+    float radius = mix(0.083, 0.17, random);
+    float tips = pow(0.5 + 0.5 * cos(angle * 5.0 + random * 5.0), 2.7);
+    float outline = radius * (0.48 + 0.52 * tips);
+    float distance = length(p);
+    float smoothing = max(fwidth(distance), 0.006);
+    float star = (1.0 - smoothstep(outline - smoothing, outline + smoothing, distance))
+        * smoothstep(0.04, 0.19, UV.y) * (1.0 - smoothstep(0.81, 0.96, UV.y));
+    vec3 ink = mix(vec3(0.42, 0.26, 0.55), vec3(0.94, 0.71, 0.33), step(0.38, random));
+    ALBEDO = mix(latex_color.rgb * 0.82, ink, star * 0.84);
+    METALLIC = mix(foil, 0.52, star);
+    ROUGHNESS = mix(0.29, 0.48, star);
+}
+"""
+    return shader
 
 
 func _add_stage() -> void:

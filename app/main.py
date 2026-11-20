@@ -38,6 +38,8 @@ LOG_DIR = ROOT_DIR / "logs"
 LOG_FILE = LOG_DIR / "app.log"
 IPC_HOST = "127.0.0.1"
 IPC_PORT = 49261
+MP4_EXPORT_FPS = 60
+GIF_RENDER_FPS = 30
 
 
 def find_godot_executable(configured_path: str = "") -> Path | None:
@@ -147,7 +149,7 @@ class ExportWorker(QThread):
         self.birthday_text = birthday_text
         self.rotation_speed = rotation_speed
         self.duration_seconds = max(1, int(duration_seconds))
-        self.fps = 30
+        self.fps = MP4_EXPORT_FPS if export_format == "mp4" else GIF_RENDER_FPS
         self.frame_count = self.duration_seconds * self.fps
 
     def run(self) -> None:
@@ -171,7 +173,7 @@ class ExportWorker(QThread):
 
             self.progress.emit(
                 f"正在无损渲染 {self.duration_seconds} 秒 3D 动画"
-                f"（{self.frame_count} 帧，1920×1080，30 FPS）..."
+                f"（{self.frame_count} 帧，1920×1080，{self.fps} FPS）..."
             )
             render_command = [
                 str(self.godot_exe),
@@ -537,7 +539,7 @@ class MagicDesktopWindow(QMainWindow):
 
         export_settings_row = QHBoxLayout()
         export_settings_row.setSpacing(12)
-        export_resolution_label = QLabel("1920 × 1080  ·  30 FPS")
+        export_resolution_label = QLabel(f"MP4  ·  1920 × 1080  ·  {MP4_EXPORT_FPS} FPS")
         export_resolution_label.setObjectName("fieldLabel")
         self.duration_combo = QComboBox()
         self.duration_combo.addItem("13 秒（完整庆典）", 13)
@@ -787,9 +789,9 @@ class MagicDesktopWindow(QMainWindow):
         if not hasattr(self, "duration_combo"):
             return
         duration = int(self.duration_combo.currentData() or 13)
-        frames = duration * 30
+        frames = duration * MP4_EXPORT_FPS
         self.export_hint.setText(
-            f"本次导出：{duration} 秒  ·  {frames} 帧  ·  1920 × 1080  ·  30 FPS"
+            f"MP4：{duration} 秒  ·  {frames} 帧  ·  1920 × 1080  ·  {MP4_EXPORT_FPS} FPS"
         )
         self.settings["export_duration_seconds"] = duration
         save_settings(self.settings)
