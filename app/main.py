@@ -83,8 +83,8 @@ def load_settings() -> dict[str, Any]:
         "godot_exe": "",
         "rotation_speed": 24,
         "birthday_text": "Happy Birthday",
-        "window_width": 640,
-        "window_height": 520,
+        "window_width": 820,
+        "window_height": 720,
     }
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     source_file = CONFIG_FILE if CONFIG_FILE.exists() else DEFAULT_CONFIG_FILE
