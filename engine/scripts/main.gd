@@ -145,6 +145,7 @@ func _build_scene() -> void:
 
     cake_root = Node3D.new()
     cake_root.name = "HeroCake"
+    cake_root.scale = Vector3.ONE * 1.12
     add_child(cake_root)
 
     # Porcelain stand: a raised foot, broad plate and fine metallic rim.
@@ -824,8 +825,8 @@ func _add_lighting() -> void:
 func _add_camera() -> void:
     var camera := Camera3D.new()
     camera.name = "HeroCamera"
-    camera.position = Vector3(0.0, 2.15, 7.65)
-    camera.fov = 36.0
+    camera.position = Vector3(0.0, 2.05, 7.25)
+    camera.fov = 38.0
     camera.current = true
     add_child(camera)
     camera.look_at(Vector3(0.0, 0.02, 0.0), Vector3.UP)
