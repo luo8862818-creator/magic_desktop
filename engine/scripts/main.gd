@@ -11,7 +11,6 @@ var mascot_root: Node3D
 var mascot_base_y := -0.62
 var birthday_label: Label3D
 var birthday_shadow: Label3D
-var subtitle_label: Label3D
 var music_player: AudioStreamPlayer
 var sfx_player: AudioStreamPlayer
 var export_backdrop: MeshInstance3D
@@ -28,8 +27,10 @@ var drag_moved := false
 var drag_mouse_origin := Vector2i.ZERO
 var drag_window_origin := Vector2i.ZERO
 var rng := RandomNumberGenerator.new()
-var burst_particles: GPUParticles3D
 var halo_ring: MeshInstance3D
+var balloon_nodes: Array[Node3D] = []
+var balloon_base_x: Array[float] = []
+var balloon_phases: Array[float] = []
 
 
 func _ready() -> void:
@@ -62,7 +63,6 @@ func _ready() -> void:
         # Movie Maker writes the scene audio to frame.wav beside the PNG sequence.
         if music_player.stream != null:
             music_player.play()
-        get_tree().create_timer(0.75).timeout.connect(_trigger_surprise)
 
     print("Magic Desktop premium 3D scene is ready. Export mode: ", export_mode)
 
@@ -94,6 +94,14 @@ func _process(delta: float) -> void:
 
     if is_instance_valid(halo_ring):
         halo_ring.rotate_z(delta * 0.12)
+
+    for index in range(balloon_nodes.size()):
+        var balloon := balloon_nodes[index]
+        var phase := balloon_phases[index]
+        var progress := fposmod(flame_clock * 0.085 + phase, 1.0)
+        balloon.position.y = lerpf(-2.65, 2.55, progress)
+        balloon.position.x = balloon_base_x[index] + sin(flame_clock * 0.72 + phase * TAU) * 0.14
+        balloon.rotation.z = sin(flame_clock * 0.62 + phase * TAU) * 0.10
 
     _poll_ipc()
 
@@ -219,10 +227,11 @@ func _build_scene() -> void:
     _add_lighting()
     _add_camera()
     _add_ambient_particles()
-    _add_burst_particles(gold)
     _add_birthday_text()
     _add_mascot_bear()
     _add_gift_box()
+    _add_balloons()
+    _add_glass_cloche()
 
 
 func _add_cream_swirl(parent: Node3D, center: Vector3, material: Material, node_name: String) -> void:
@@ -860,37 +869,6 @@ func _add_ambient_particles() -> void:
     add_child(particles)
 
 
-func _add_burst_particles(material: Material) -> void:
-    var particle_mesh := _create_star_mesh()
-    var sparkle_material := _make_material(
-        Color("#ffd58a"), 0.08, 0.24, Color("#ffd58a"), 0.32
-    )
-    sparkle_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-    particle_mesh.surface_set_material(0, sparkle_material)
-
-    var process_material := ParticleProcessMaterial.new()
-    process_material.direction = Vector3(0.0, 1.0, 0.0)
-    process_material.spread = 180.0
-    process_material.initial_velocity_min = 0.65
-    process_material.initial_velocity_max = 1.75
-    process_material.gravity = Vector3(0.0, -0.72, 0.0)
-    process_material.scale_min = 0.18
-    process_material.scale_max = 0.42
-
-    burst_particles = GPUParticles3D.new()
-    burst_particles.name = "PastelStarConfetti"
-    burst_particles.amount = 72
-    burst_particles.lifetime = 1.25
-    burst_particles.one_shot = true
-    burst_particles.explosiveness = 0.92
-    burst_particles.position = Vector3(0.0, 0.42, 0.45)
-    burst_particles.visibility_aabb = AABB(Vector3(-4.0, -2.0, -2.0), Vector3(8.0, 6.0, 4.0))
-    burst_particles.process_material = process_material
-    burst_particles.draw_pass_1 = particle_mesh
-    burst_particles.emitting = false
-    add_child(burst_particles)
-
-
 func _add_birthday_text() -> void:
     birthday_shadow = Label3D.new()
     birthday_shadow.name = "BirthdayTextShadow"
@@ -915,17 +893,164 @@ func _add_birthday_text() -> void:
     birthday_label.position = Vector3(0.0, -1.63, 0.46)
     add_child(birthday_label)
 
-    subtitle_label = Label3D.new()
-    subtitle_label.name = "BirthdaySubtitle"
-    subtitle_label.text = "MAKE A WISH"
-    subtitle_label.font_size = 20
-    subtitle_label.pixel_size = 0.0032
-    subtitle_label.modulate = Color("#9fe5f2")
-    subtitle_label.outline_size = 4
-    subtitle_label.outline_modulate = Color("#172b3a")
-    subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    subtitle_label.position = Vector3(0.0, -1.92, 0.46)
-    add_child(subtitle_label)
+
+
+func _add_balloons() -> void:
+    var colors: Array[Color] = [
+        Color("#f6a9c9"),
+        Color("#a8e9f3"),
+        Color("#c3b2ff"),
+        Color("#ffdc91"),
+        Color("#fff0df"),
+        Color("#9fe0cf"),
+        Color("#e9b8ef"),
+        Color("#9ec8ff"),
+    ]
+    var x_positions: Array[float] = [-2.18, 2.20, -2.38, 2.38, -1.98, 2.02, -2.30, 2.32]
+
+    for index in range(colors.size()):
+        var root := Node3D.new()
+        root.name = "RisingBalloon_%02d" % index
+        root.position = Vector3(x_positions[index], -2.65, -1.65 - float(index % 3) * 0.18)
+        add_child(root)
+
+        var color: Color = colors[index]
+        var balloon_material := _make_material(color, 0.04, 0.22, color * 0.10, 0.08)
+
+        var body := MeshInstance3D.new()
+        body.name = "PastelLatex"
+        var body_mesh := SphereMesh.new()
+        body_mesh.radius = 0.205 if index % 3 == 0 else 0.175
+        body_mesh.height = 0.48 if index % 3 == 0 else 0.42
+        body_mesh.radial_segments = 32
+        body_mesh.rings = 20
+        body.mesh = body_mesh
+        body.material_override = balloon_material
+        body.scale = Vector3(0.78, 1.0, 0.72)
+        root.add_child(body)
+
+        var knot := _add_sphere(
+            root,
+            "BalloonKnot",
+            0.045,
+            balloon_material,
+            Vector3(0.0, -0.215, 0.0)
+        )
+        knot.scale = Vector3(0.72, 0.8, 0.72)
+
+        var string_material := _make_material(
+            Color("#f4e9e6"), 0.0, 0.52, Color("#fff4ec"), 0.025
+        )
+        string_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+        string_material.albedo_color.a = 0.58
+
+        var string_mesh := CylinderMesh.new()
+        string_mesh.top_radius = 0.003
+        string_mesh.bottom_radius = 0.003
+        string_mesh.height = 0.62
+        string_mesh.radial_segments = 6
+        var string_instance := MeshInstance3D.new()
+        string_instance.name = "FineBalloonString"
+        string_instance.mesh = string_mesh
+        string_instance.material_override = string_material
+        string_instance.position.y = -0.53
+        root.add_child(string_instance)
+
+        var highlight := _add_sphere(
+            root,
+            "SoftSpecularHighlight",
+            0.032,
+            _make_material(Color("#ffffff"), 0.0, 0.12, Color("#ffffff"), 0.18),
+            Vector3(-0.065, 0.075, 0.105)
+        )
+        highlight.scale = Vector3(0.48, 0.92, 0.30)
+
+        balloon_nodes.append(root)
+        balloon_base_x.append(x_positions[index])
+        balloon_phases.append(float(index) * 0.115)
+
+
+func _create_glass_dome_mesh(radius: float, height: float) -> ArrayMesh:
+    const RINGS := 28
+    const SEGMENTS := 56
+    var surface := SurfaceTool.new()
+    surface.begin(Mesh.PRIMITIVE_TRIANGLES)
+
+    for ring in range(RINGS):
+        var theta0 := (PI * 0.5) * float(ring) / float(RINGS)
+        var theta1 := (PI * 0.5) * float(ring + 1) / float(RINGS)
+
+        for segment in range(SEGMENTS):
+            var phi0 := TAU * float(segment) / float(SEGMENTS)
+            var phi1 := TAU * float(segment + 1) / float(SEGMENTS)
+
+            var p00 := Vector3(
+                radius * sin(theta0) * cos(phi0),
+                height * cos(theta0),
+                radius * sin(theta0) * sin(phi0)
+            )
+            var p01 := Vector3(
+                radius * sin(theta0) * cos(phi1),
+                height * cos(theta0),
+                radius * sin(theta0) * sin(phi1)
+            )
+            var p10 := Vector3(
+                radius * sin(theta1) * cos(phi0),
+                height * cos(theta1),
+                radius * sin(theta1) * sin(phi0)
+            )
+            var p11 := Vector3(
+                radius * sin(theta1) * cos(phi1),
+                height * cos(theta1),
+                radius * sin(theta1) * sin(phi1)
+            )
+
+            surface.add_vertex(p00)
+            surface.add_vertex(p10)
+            surface.add_vertex(p01)
+            surface.add_vertex(p01)
+            surface.add_vertex(p10)
+            surface.add_vertex(p11)
+
+    surface.generate_normals()
+    return surface.commit()
+
+
+func _add_glass_cloche() -> void:
+    var glass_shader := Shader.new()
+    glass_shader.code = """
+shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_disabled;
+void fragment() {
+    float facing = abs(dot(normalize(NORMAL), normalize(VIEW)));
+    float edge = pow(1.0 - clamp(facing, 0.0, 1.0), 2.8);
+    vec3 tint = mix(vec3(0.36, 0.70, 0.86), vec3(0.86, 0.94, 1.0), edge);
+    ALBEDO = tint;
+    ROUGHNESS = 0.075;
+    METALLIC = 0.12;
+    ALPHA = 0.018 + edge * 0.19;
+    EMISSION = tint * edge * 0.12;
+}
+"""
+    var glass_material := ShaderMaterial.new()
+    glass_material.shader = glass_shader
+
+    var dome := MeshInstance3D.new()
+    dome.name = "CrystalGlassCloche"
+    dome.mesh = _create_glass_dome_mesh(1.79, 2.72)
+    dome.material_override = glass_material
+    dome.position = Vector3(0.0, -0.68, 0.0)
+    add_child(dome)
+
+    var base_gold := _make_material(
+        Color("#f4cb7a"), 0.76, 0.16, Color("#ffd98d"), 0.18
+    )
+    _add_torus(self, "ClocheGoldFootRing", 1.72, 1.78, 0.025, -0.665, base_gold)
+
+    var inner_glow := _make_material(
+        Color("#8edcf2"), 0.48, 0.22, Color("#83dfff"), 0.22
+    )
+    _add_torus(self, "ClocheInnerLightLine", 1.685, 1.70, 0.012, -0.625, inner_glow)
 
 
 func _add_export_backdrop() -> void:
@@ -1164,23 +1289,15 @@ func _handle_command(command: Dictionary) -> void:
 
 
 func _trigger_surprise() -> void:
+    # Click feedback is intentionally restrained: a soft chime and a small
+    # teddy-bear nod only. No expanding particles, white flashes or ghost trails.
     _play_sparkle_sound()
-    if is_instance_valid(burst_particles):
-        burst_particles.restart()
-
-    # Keep the cake's scale fixed: only small star confetti reacts to clicks.
-    for index in range(star_nodes.size()):
-        var star := star_nodes[index]
-        var original_scale := star.scale
-        var pop := create_tween()
-        pop.tween_property(star, "scale", original_scale * 1.18, 0.18)
-        pop.tween_property(star, "scale", original_scale, 0.34)
 
     if is_instance_valid(mascot_root):
         var mascot_tween := create_tween()
-        mascot_tween.tween_property(mascot_root, "rotation:y", 0.12, 0.12)
-        mascot_tween.tween_property(mascot_root, "rotation:y", -0.08, 0.16)
-        mascot_tween.tween_property(mascot_root, "rotation:y", 0.0, 0.18)
+        mascot_tween.tween_property(mascot_root, "rotation:y", 0.10, 0.18)
+        mascot_tween.tween_property(mascot_root, "rotation:y", -0.06, 0.20)
+        mascot_tween.tween_property(mascot_root, "rotation:y", 0.0, 0.22)
 
 
 func _input(event: InputEvent) -> void:
