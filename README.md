@@ -46,6 +46,8 @@ Godot 官方下载：https://godotengine.org/download/windows/
 6. 双击 `start.bat`，打开 Magic Desktop 控制中心。
 7. 程序会自动识别 `tools/godot/` 中唯一的 GUI 版 Godot exe，点击“启动桌面动画”即可。若放入多个版本，或自动识别失败，可点击“选择...”手动指定。
 
+首次运行新版场景前，建议先双击 `check_engine.bat`，让 Godot 以 headless 模式检查项目和 GDScript 是否能正常加载；检查通过后再运行 `start.bat`。
+
 Godot 下载地址：https://godotengine.org/download/windows/
 
 **说明：** 当前阶段放入的是 Godot 编辑器发行版 exe，程序通过它运行项目；这不是最终交付时的独立导出运行程序。最终发布版会再改为内置 Godot 导出运行时。
@@ -86,6 +88,7 @@ magic_desktop/
 ├── requirements.txt
 ├── setup.bat
 ├── start.bat
+├── check_engine.bat
 └── README.md
 ```
 
