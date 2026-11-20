@@ -180,7 +180,7 @@ class MagicDesktopWindow(QMainWindow):
 
         path_row = QHBoxLayout()
         self.godot_path_input = QLineEdit(str(self.settings.get("godot_exe", "")))
-        self.godot_path_input.setPlaceholderText("选择 Godot 4.x 可执行文件")
+        self.godot_path_input.setPlaceholderText("自动识别 tools/godot/，也可手动选择")
         choose_button = QPushButton("选择...")
         choose_button.setObjectName("secondaryButton")
         choose_button.clicked.connect(self._choose_godot)
