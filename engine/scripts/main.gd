@@ -8,7 +8,7 @@ var udp := PacketPeerUDP.new()
 var export_mode := false
 var cake_root: Node3D
 var mascot_root: Node3D
-var mascot_base_y := -0.55
+var mascot_base_y := -0.62
 var birthday_label: Label3D
 var birthday_shadow: Label3D
 var subtitle_label: Label3D
@@ -438,7 +438,7 @@ func _add_strawberries() -> void:
 func _add_mascot_bear() -> void:
     mascot_root = Node3D.new()
     mascot_root.name = "CuteTeddyMascot"
-    mascot_root.position = Vector3(1.16, -0.55, 0.78)
+    mascot_root.position = Vector3(1.16, -0.62, 0.78)
     mascot_base_y = mascot_root.position.y
     add_child(mascot_root)
 
@@ -524,7 +524,7 @@ func gold_material_for_mascot() -> Material:
 func _add_gift_box() -> void:
     var gift_root := Node3D.new()
     gift_root.name = "TinyBirthdayGift"
-    gift_root.position = Vector3(-1.22, -0.55, 0.76)
+    gift_root.position = Vector3(-1.22, -0.62, 0.76)
     add_child(gift_root)
 
     var gift_pink := _make_material(Color("#f28eb0"), 0.08, 0.30)
