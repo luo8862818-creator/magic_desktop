@@ -542,7 +542,7 @@ class MagicDesktopWindow(QMainWindow):
         root.addWidget(actions_card)
 
         footer = QLabel(
-            "交互提示  ·  点击蛋糕触发弹跳与星光爆发，按住拖动可移动悬浮窗口。\\n"
+            "交互提示  ·  点击蛋糕触发弹跳与星光爆发，按住拖动可移动悬浮窗口。\n"
             "开启鼠标穿透后，鼠标操作将直接传递给桌面下方的应用。"
         )
         footer.setObjectName("footer")
@@ -704,12 +704,14 @@ class MagicDesktopWindow(QMainWindow):
             )
             return
 
+        output_dir = ROOT_DIR / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
         default_name = "MagicDesktop_Animation.mp4" if export_format == "mp4" else "MagicDesktop_Animation.gif"
         file_filter = "MP4 video (*.mp4)" if export_format == "mp4" else "GIF animation (*.gif)"
         output, _ = QFileDialog.getSaveFileName(
             self,
             "导出桌面动画",
-            str(ROOT_DIR / "output" / default_name),
+            str(output_dir / default_name),
             file_filter,
         )
         if not output:
@@ -790,9 +792,9 @@ class MagicDesktopWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "未找到 Godot 4",
-                "请将 Godot 4.x Windows GUI 版 exe 放入以下目录：\\n"
-                f"{GODOT_DIR}\\n\\n"
-                "文件名应以 Godot 开头，例如 Godot_v4.5-stable_win64.exe。\\n"
+                "请将 Godot 4.x Windows GUI 版 exe 放入以下目录：\n"
+                f"{GODOT_DIR}\n\n"
+                "文件名应以 Godot 开头，例如 Godot_v4.5-stable_win64.exe。\n"
                 "如果目录中有多个版本，请点击“选择...”手动指定。",
             )
             return
