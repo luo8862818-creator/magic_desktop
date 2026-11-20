@@ -3,6 +3,9 @@ extends Node3D
 const DEFAULT_PORT := 49261
 const WINDOW_WIDTH := 1120
 const WINDOW_HEIGHT := 630
+const BALLOON_WAVE_END := 5.90
+const BALLOON_LANES := 10
+const BALLOON_COUNT := 30
 
 var udp := PacketPeerUDP.new()
 var export_mode := false
@@ -33,7 +36,7 @@ var star_sizes: Array[float] = []
 var backdrop_material: ShaderMaterial
 var balloon_nodes: Array[Node3D] = []
 var balloon_base_x: Array[float] = []
-var balloon_phases: Array[float] = []
+var balloon_flights: Array[Vector2] = []
 
 
 func _ready() -> void:
@@ -80,16 +83,17 @@ func _process(delta: float) -> void:
 
 func _animate_scene(time: float, delta: float) -> void:
     var intro := smoothstep(0.0, 1.6, time)
-    var platform_lift := smoothstep(4.25, 7.15, time)
-    var focus := smoothstep(5.0, 7.8, time)
-    var reveal := smoothstep(8.15, 10.65, time)
+    var platform_lift := smoothstep(BALLOON_WAVE_END, 8.10, time)
+    var focus := smoothstep(6.65, 8.25, time)
+    var reveal := smoothstep(8.55, 10.45, time)
     birthday_label.modulate.a = reveal
     birthday_label.position.y = 2.14 + reveal * 0.15
     softbox.light_energy = 0.17 + 0.37 * intro + 0.16 * focus
     warm_rim.light_energy = 0.22 + 0.66 * focus
     backdrop_material.set_shader_parameter("arrival", intro)
     # The porcelain stand and its companions travel with the stage lift.
-    cake_platform.position.y = lerpf(-5.2, 0.0, platform_lift)
+    cake_platform.visible = time >= BALLOON_WAVE_END
+    cake_platform.position.y = lerpf(-8.5, 0.0, platform_lift)
     cake_root.rotate_y(deg_to_rad(rotation_speed_degrees) * delta)
     mascot_root.rotation.x = 0.03 * sin(time * 1.5)
     mascot_root.rotation.y = -0.24 + 0.06 * sin(time * 0.92)
@@ -111,7 +115,7 @@ func _animate_scene(time: float, delta: float) -> void:
         star.rotation.z = phase + drift * 0.15
         star.scale = Vector3.ONE * maxf(0.0001, intro * star_sizes[index] * twinkle)
 
-    var ribbon_time := maxf(0.0, time - 3.0)
+    var ribbon_time := maxf(0.0, time - BALLOON_WAVE_END)
     var motion := smoothstep(0.0, 2.0, ribbon_time)
     for index in range(streamers.size()):
         var phase := float(index) * 1.6
@@ -120,15 +124,17 @@ func _animate_scene(time: float, delta: float) -> void:
 
     for index in range(balloon_nodes.size()):
         var balloon := balloon_nodes[index]
-        var phase := balloon_phases[index]
-        var lift := smoothstep(0.35 + phase, 4.45 + phase * 0.78, time)
-        var spread := smoothstep(1.5 + phase * 0.20, 4.8 + phase * 0.24, time)
-        var height := 0.25 + floorf(float(index) * 0.5) * 0.51
-        balloon.position.y = lerpf(-4.1, height, lift)
-        balloon.position.x = balloon_base_x[index] * lerpf(0.61, 1.0, spread)
-        balloon.position.x += 0.14 * lift * sin(time * (0.67 + phase * 0.12) + phase)
-        balloon.rotation.z = 0.16 * lift * sin(time * 0.81 + phase * 2.0)
-        balloon.rotation.y = 0.28 * lift * sin(time * 0.61 + float(index))
+        var flight := balloon_flights[index]
+        balloon.visible = time >= flight.x and time < minf(flight.y, BALLOON_WAVE_END)
+        if not balloon.visible:
+            continue
+        var age := time - flight.x
+        var lift := age / (flight.y - flight.x)
+        var phase := float(index) * 2.39
+        balloon.position.y = lerpf(-5.0, 6.8, lift)
+        balloon.position.x = balloon_base_x[index] + 0.25 * sin(age * 1.9 + phase)
+        balloon.rotation.z = 0.16 * sin(age * 1.7 + phase)
+        balloon.rotation.y = 0.28 * sin(age * 1.3 + phase)
 
 
 func _setup_environment() -> void:
@@ -663,7 +669,7 @@ func _add_ribbon_mesh(points: Array[Vector3], width: float, material: Material, 
     if material is StandardMaterial3D:
         var ribbon_material := material as StandardMaterial3D
         ribbon_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-    add_child(ribbon)
+    cake_platform.add_child(ribbon)
     streamers.append(ribbon)
 
 
@@ -878,15 +884,20 @@ func _add_balloons() -> void:
         Color("#e9b8ef"),
         Color("#9ec8ff"),
     ]
-    var x_positions: Array[float] = [-3.42, 3.16, -2.71, 2.67, -3.63, 3.71, -2.72, 3.22]
-
-    for index in range(colors.size()):
+    for index in range(BALLOON_COUNT):
+        var lane := index % BALLOON_LANES
+        var cohort := floorf(float(index) / float(BALLOON_LANES))
+        var x := lerpf(-3.9, 3.9, float(lane) / float(BALLOON_LANES - 1))
+        x += rng.randf_range(-0.27, 0.27)
+        var departure := 0.08 + cohort * 0.63 + rng.randf_range(0.0, 0.52)
+        var arrival := minf(departure + rng.randf_range(3.65, 4.35), BALLOON_WAVE_END)
         var root := Node3D.new()
         root.name = "RisingBalloon_%02d" % index
-        root.position = Vector3(x_positions[index], -2.65, -0.9 - float(index % 3) * 0.58)
+        root.position = Vector3(x, -5.0, rng.randf_range(-2.35, 0.48))
+        root.scale = Vector3.ONE * rng.randf_range(0.64, 1.03)
         add_child(root)
 
-        var color: Color = colors[index]
+        var color: Color = colors[(index * 3 + int(cohort)) % colors.size()]
         var balloon_material := _make_material(color, 0.04, 0.22, color * 0.10, 0.08)
 
         balloon_material.metallic = 0.40 if index % 3 == 0 else 0.04
@@ -921,8 +932,8 @@ func _add_balloons() -> void:
         _add_tube(root, "CurledSilkTether", tether, 0.006, _make_material(Color("#ba936b"), 0.42, 0.45))
 
         balloon_nodes.append(root)
-        balloon_base_x.append(x_positions[index])
-        balloon_phases.append(float(index) * 0.26)
+        balloon_base_x.append(x)
+        balloon_flights.append(Vector2(departure, arrival))
 
 
 func _add_stage() -> void:
@@ -956,7 +967,7 @@ void fragment() {
                 -0.93 + sin(angle) * (3.89 + float(index) * 0.10),
                 -2.85 - float(index) * 0.39 + cos(angle) * 0.41
             ))
-        _add_tube(self, "GalleryArch_%d" % index, path, 0.058 if index == 1 else 0.014, crystal if index == 1 else brass)
+        _add_tube(cake_platform, "GalleryArch_%d" % index, path, 0.058 if index == 1 else 0.014, crystal if index == 1 else brass)
 
 
 func _add_tube(parent: Node3D, title: String, path: Curve3D, radius: float, material: Material) -> void:
