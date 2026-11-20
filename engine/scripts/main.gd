@@ -240,7 +240,7 @@ func _add_cream_swirl(parent: Node3D, center: Vector3, material: Material, node_
 
     var surface := SurfaceTool.new()
     surface.begin(Mesh.PRIMITIVE_TRIANGLES)
-    var rings: Array[Array] = []
+    var vertices := PackedVector3Array()
 
     for step in range(STEPS):
         var previous_index := maxi(0, step - 1)
@@ -252,26 +252,24 @@ func _add_cream_swirl(parent: Node3D, center: Vector3, material: Material, node_
         var normal := tangent.cross(side).normalized()
         var t := float(step) / float(STEPS - 1)
         var tube_radius := 0.040 * (1.0 - t * 0.62)
-        var ring: Array[Vector3] = []
-
         for ring_index in range(RING_SEGMENTS):
             var ring_angle := TAU * float(ring_index) / float(RING_SEGMENTS)
             var offset := (
                 side * cos(ring_angle) + normal * sin(ring_angle)
             ) * tube_radius
-            ring.append(path_points[step] + offset)
-
-        rings.append(ring)
+            vertices.append(path_points[step] + offset)
 
     for step in range(STEPS - 1):
         for ring_index in range(RING_SEGMENTS):
             var next_index := (ring_index + 1) % RING_SEGMENTS
-            surface.add_vertex(rings[step][ring_index])
-            surface.add_vertex(rings[step][next_index])
-            surface.add_vertex(rings[step + 1][ring_index])
-            surface.add_vertex(rings[step][next_index])
-            surface.add_vertex(rings[step + 1][next_index])
-            surface.add_vertex(rings[step + 1][ring_index])
+            var current_base := step * RING_SEGMENTS
+            var next_base := (step + 1) * RING_SEGMENTS
+            surface.add_vertex(vertices[current_base + ring_index])
+            surface.add_vertex(vertices[current_base + next_index])
+            surface.add_vertex(vertices[next_base + ring_index])
+            surface.add_vertex(vertices[current_base + next_index])
+            surface.add_vertex(vertices[next_base + next_index])
+            surface.add_vertex(vertices[next_base + ring_index])
 
     surface.generate_normals()
     var swirl := MeshInstance3D.new()
@@ -1178,9 +1176,9 @@ func _trigger_surprise() -> void:
 
     if is_instance_valid(mascot_root):
         var mascot_tween := create_tween()
-        mascot_tween.tween_property(mascot_root, "rotation:z", 0.10, 0.12)
-        mascot_tween.tween_property(mascot_root, "rotation:z", -0.06, 0.16)
-        mascot_tween.tween_property(mascot_root, "rotation:z", 0.0, 0.18)
+        mascot_tween.tween_property(mascot_root, "rotation:y", 0.12, 0.12)
+        mascot_tween.tween_property(mascot_root, "rotation:y", -0.08, 0.16)
+        mascot_tween.tween_property(mascot_root, "rotation:y", 0.0, 0.18)
 
 
 func _input(event: InputEvent) -> void:
