@@ -28,12 +28,41 @@ from PySide6.QtWidgets import (
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 ENGINE_DIR = ROOT_DIR / "engine"
+GODOT_DIR = ROOT_DIR / "tools" / "godot"
 DEFAULT_CONFIG_FILE = ROOT_DIR / "config" / "settings.json"
 CONFIG_FILE = ROOT_DIR / "config" / "settings.local.json"
 LOG_DIR = ROOT_DIR / "logs"
 LOG_FILE = LOG_DIR / "app.log"
 IPC_HOST = "127.0.0.1"
 IPC_PORT = 49261
+
+
+def find_godot_executable(configured_path: str = "") -> Path | None:
+    """Find a Godot 4 Windows executable bundled in tools/godot.
+
+    A previously selected local path takes priority while it still exists.
+    If the folder contains exactly one GUI executable, use it automatically.
+    Console builds are only used as a fallback.
+    """
+    configured = Path(configured_path.strip().strip('"')) if configured_path.strip() else None
+    if configured and configured.is_file():
+        return configured
+
+    if not GODOT_DIR.is_dir():
+        return None
+
+    candidates = sorted(
+        path for path in GODOT_DIR.glob("Godot*.exe")
+        if path.is_file()
+    )
+    gui_candidates = [
+        path for path in candidates
+        if "console" not in path.stem.lower()
+    ]
+    preferred = gui_candidates or candidates
+    if len(preferred) == 1:
+        return preferred[0]
+    return None
 
 
 def configure_logging() -> None:
@@ -82,6 +111,7 @@ class MagicDesktopWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.settings = load_settings()
+        self.detected_godot = find_godot_executable(str(self.settings.get("godot_exe", "")))
         self.godot_process: subprocess.Popen[bytes] | None = None
         self.godot_log_handle: Any = None
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -98,7 +128,17 @@ class MagicDesktopWindow(QMainWindow):
         self.process_timer.timeout.connect(self._check_process)
         self.process_timer.start()
 
-        self._set_status("就绪。选择 Godot.exe 后即可启动桌面动画。", "muted")
+        if self.detected_godot:
+            self.godot_path_input.setText(str(self.detected_godot))
+            self._set_status(
+                f"已自动识别 Godot：{self.detected_godot.name}。可以启动桌面动画。",
+                "success",
+            )
+        else:
+            self._set_status(
+                f"未找到 Godot。请将 Godot 4.x Windows GUI 版 exe 放入：{GODOT_DIR}",
+                "muted",
+            )
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -341,14 +381,19 @@ class MagicDesktopWindow(QMainWindow):
             self._set_status("3D 引擎已经在运行。", "success")
             return
 
-        godot_exe = Path(self.godot_path_input.text().strip().strip('"'))
-        if not godot_exe.is_file():
+        godot_exe = find_godot_executable(self.godot_path_input.text())
+        if not godot_exe:
+            GODOT_DIR.mkdir(parents=True, exist_ok=True)
             QMessageBox.warning(
                 self,
-                "需要选择 Godot",
-                "请先点击“选择...”，选择 Godot 4.x 的可执行文件。",
+                "未找到 Godot 4",
+                "请将 Godot 4.x Windows GUI 版 exe 放入以下目录：\\n"
+                f"{GODOT_DIR}\\n\\n"
+                "文件名应以 Godot 开头，例如 Godot_v4.5-stable_win64.exe。\\n"
+                "如果目录中有多个版本，请点击“选择...”手动指定。",
             )
             return
+        self.godot_path_input.setText(str(godot_exe))
         if not (ENGINE_DIR / "project.godot").is_file():
             QMessageBox.critical(self, "项目文件缺失", f"找不到：{ENGINE_DIR / 'project.godot'}")
             return
