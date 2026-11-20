@@ -443,10 +443,15 @@ func _input(event: InputEvent) -> void:
             drag_moved = false
             drag_mouse_origin = DisplayServer.mouse_get_position()
             drag_window_origin = DisplayServer.window_get_position()
+            # Temporarily accept mouse input across the whole window while dragging,
+            # otherwise the pointer could leave the cake hit-region mid-drag.
+            DisplayServer.window_set_mouse_passthrough(PackedVector2Array())
         else:
             if dragging and not drag_moved:
                 _trigger_surprise()
             dragging = false
+            if not passthrough_enabled:
+                _setup_mouse_region()
 
     elif event is InputEventMouseMotion and dragging:
         var current_mouse := DisplayServer.mouse_get_position()
