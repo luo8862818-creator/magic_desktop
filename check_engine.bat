@@ -18,6 +18,18 @@ if not defined GODOT_EXE (
     exit /b 1
 )
 
+if exist ".venv\Scripts\python.exe" (
+    echo [INFO] Checking Python syntax...
+    ".venv\Scripts\python.exe" -m py_compile app\main.py
+    if errorlevel 1 (
+        echo [ERROR] Python syntax check failed.
+        pause
+        exit /b 1
+    )
+) else (
+    echo [WARN] Python virtual environment not found. Run setup.bat first.
+)
+
 echo [INFO] Using: "%GODOT_EXE%"
 echo [INFO] Checking project and GDScript parsing...
 "%GODOT_EXE%" --headless --path "%CD%\engine" --editor --quit
